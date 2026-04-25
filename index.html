@@ -8,17 +8,20 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lucide-static@0.321.0/font/lucide.min.css">
     <style>
-        th { writing-mode: vertical-rl; height: 120px; font-weight: normal; }
+        /* 見出しを縦書きに、かつスクロール時に固定 */
+        th { writing-mode: vertical-rl; height: 140px; font-weight: normal; }
         .no-vertical { writing-mode: horizontal-tb; height: auto; }
+        /* ヘッダー固定用のスタイル */
+        .sticky-header { position: sticky; top: 0; z-index: 50; }
+        .sticky-col { position: sticky; left: 0; z-index: 40; background: white; }
     </style>
 </head>
-<body class="bg-slate-50">
+<body class="bg-slate-50 min-h-screen">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState } = React;
+        const { useState, useEffect } = React;
 
         const conditionItems = ['気分', '睡眠', '食事', 'ストレス'];
         const goodSigns = ['まあいいか', '心に余裕がある', '適度な身だしなみ', '入浴が心地よい', '同じ時間に起きる', '適度な寝だめ'];
@@ -27,14 +30,27 @@
         const recoveryItems = ['コーヒー', 'スキンケア', 'マインドフルネス'];
 
         function App() {
-            const [records, setRecords] = useState([
-                { id: 1, date: new Date().toISOString().split('T')[0], time: '朝', conditions: {}, goodSigns: {}, warningSigns: {}, badSigns: {}, recovery: {}, medication: false, note: '' }
-            ]);
+            // 初回読み込み時にブラウザの保存データを確認
+            const [records, setRecords] = useState(() => {
+                const saved = localStorage.getItem('kstep_data');
+                return saved ? JSON.parse(saved) : [
+                    { id: 1, date: new Date().toISOString().split('T')[0], time: '朝', conditions: {}, goodSigns: {}, warningSigns: {}, badSigns: {}, recovery: {}, medication: false, note: '' }
+                ];
+            });
+
+            // recordsが更新されるたびに自動保存
+            useEffect(() => {
+                localStorage.setItem('kstep_data', JSON.stringify(records));
+            }, [records]);
 
             const addRecord = () => {
                 const last = records[records.length - 1];
                 let nextTime = last?.time === '朝' ? '昼' : last?.time === '昼' ? '晩' : '朝';
-                setRecords([...records, { id: Date.now(), date: last?.date || '', time: nextTime, conditions: {}, goodSigns: {}, warningSigns: {}, badSigns: {}, recovery: {}, medication: false, note: '' }]);
+                let nextDate = last?.time === '晩' ? 
+                    new Date(new Date(last.date).getTime() + 86400000).toISOString().split('T')[0] : 
+                    (last?.date || new Date().toISOString().split('T')[0]);
+                
+                setRecords([...records, { id: Date.now(), date: nextDate, time: nextTime, conditions: {}, goodSigns: {}, warningSigns: {}, badSigns: {}, recovery: {}, medication: false, note: '' }]);
             };
 
             const toggle = (id, cat, item) => {
@@ -45,33 +61,40 @@
                 setRecords(records.map(r => r.id === id ? (sub ? { ...r, [field]: { ...r[field], [sub]: val } } : { ...r, [field]: val }) : r));
             };
 
+            const deleteRow = (id) => {
+                if(window.confirm('この行を削除しますか？')) {
+                    setRecords(records.filter(r => r.id !== id));
+                }
+            };
+
             return (
-                <div className="p-4 max-w-[1400px] mx-auto">
-                    <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-sm">
-                        <h1 className="text-xl font-bold">K-STEP 体調管理シート</h1>
-                        <button onClick={addRecord} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700">＋ 行を追加</button>
+                <div className="p-2 md:p-4 max-w-[1600px] mx-auto">
+                    <div className="flex justify-between items-center mb-4 bg-white p-4 rounded-xl shadow-sm sticky top-0 z-[60]">
+                        <h1 className="text-lg font-bold text-slate-800">K-STEP 管理シート (自動保存)</h1>
+                        <button onClick={addRecord} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-indigo-700 shadow-lg">＋ 新しい記録を追加</button>
                     </div>
                     
-                    <div className="overflow-x-auto bg-white rounded-xl shadow-md border border-slate-200">
+                    <div className="overflow-auto max-h-[80vh] bg-white rounded-xl shadow-md border border-slate-200">
                         <table className="w-max border-collapse">
-                            <thead>
+                            <thead className="sticky-header">
                                 <tr className="bg-slate-800 text-white text-[10px]">
-                                    <th className="no-vertical p-2 border border-slate-700 min-w-[120px]">日付</th>
+                                    <th className="no-vertical p-2 border border-slate-700 sticky-col bg-slate-800">日付</th>
                                     <th className="no-vertical p-2 border border-slate-700 w-16">時間</th>
                                     {conditionItems.map(h => <th key={h} className="border border-slate-700 p-1">{h}</th>)}
-                                    {goodSigns.map(h => <th key={h} className="border border-slate-700 p-1 bg-blue-900/30">{h}</th>)}
-                                    {warningSigns.map(h => <th key={h} className="border border-slate-700 p-1 bg-amber-900/30">{h}</th>)}
-                                    {badSigns.map(h => <th key={h} className="border border-slate-700 p-1 bg-red-900/30">{h}</th>)}
-                                    {recoveryItems.map(h => <th key={h} className="border border-slate-700 p-1 bg-green-900/30">{h}</th>)}
+                                    {goodSigns.map(h => <th key={h} className="border border-slate-700 p-1 bg-blue-900/30 text-blue-200">{h}</th>)}
+                                    {warningSigns.map(h => <th key={h} className="border border-slate-700 p-1 bg-amber-900/30 text-amber-200">{h}</th>)}
+                                    {badSigns.map(h => <th key={h} className="border border-slate-700 p-1 bg-red-900/30 text-red-200">{h}</th>)}
+                                    {recoveryItems.map(h => <th key={h} className="border border-slate-700 p-1 bg-green-900/30 text-green-200">{h}</th>)}
                                     <th className="no-vertical p-2 border border-slate-700 w-12">頓服</th>
                                     <th className="no-vertical p-2 border border-slate-700 min-w-[150px]">備考</th>
+                                    <th className="no-vertical p-2 border border-slate-700"></th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {records.map(r => (
                                     <tr key={r.id} className="hover:bg-slate-50 border-b border-slate-100">
-                                        <td className="p-1 border border-slate-200"><input type="date" value={r.date} onChange={e => update(r.id, 'date', e.target.value)} className="w-full text-xs outline-none" /></td>
-                                        <td className="p-1 border border-slate-200 text-center text-xs font-bold">
+                                        <td className="p-1 border border-slate-200 sticky-col"><input type="date" value={r.date} onChange={e => update(r.id, 'date', e.target.value)} className="w-full text-xs outline-none" /></td>
+                                        <td className="p-1 border border-slate-200 text-center text-xs font-bold bg-white">
                                             <select value={r.time} onChange={e => update(r.id, 'time', e.target.value)} className="bg-transparent outline-none">
                                                 <option>朝</option><option>昼</option><option>晩</option>
                                             </select>
@@ -83,12 +106,13 @@
                                                 </select>
                                             </td>
                                         ))}
-                                        {goodSigns.map(h => <td key={h} onClick={() => toggle(r.id, 'goodSigns', h)} className={`border border-slate-200 text-center cursor-pointer ${r.goodSigns[h] ? 'bg-blue-100' : ''}`}>{r.goodSigns[h] ? '○' : ''}</td>)}
-                                        {warningSigns.map(h => <td key={h} onClick={() => toggle(r.id, 'warningSigns', h)} className={`border border-slate-200 text-center cursor-pointer ${r.warningSigns[h] ? 'bg-amber-100' : ''}`}>{r.warningSigns[h] ? '○' : ''}</td>)}
-                                        {badSigns.map(h => <td key={h} onClick={() => toggle(r.id, 'badSigns', h)} className={`border border-slate-200 text-center cursor-pointer ${r.badSigns[h] ? 'bg-red-100' : ''}`}>{r.badSigns[h] ? '○' : ''}</td>)}
-                                        {recoveryItems.map(h => <td key={h} onClick={() => toggle(r.id, 'recovery', h)} className={`border border-slate-200 text-center cursor-pointer ${r.recovery[h] ? 'bg-green-100' : ''}`}>{r.recovery[h] ? '○' : ''}</td>)}
+                                        {goodSigns.map(h => <td key={h} onClick={() => toggle(r.id, 'goodSigns', h)} className={`border border-slate-200 text-center cursor-pointer transition-colors ${r.goodSigns[h] ? 'bg-blue-100' : ''}`}>{r.goodSigns[h] ? '○' : ''}</td>)}
+                                        {warningSigns.map(h => <td key={h} onClick={() => toggle(r.id, 'warningSigns', h)} className={`border border-slate-200 text-center cursor-pointer transition-colors ${r.warningSigns[h] ? 'bg-amber-100' : ''}`}>{r.warningSigns[h] ? '○' : ''}</td>)}
+                                        {badSigns.map(h => <td key={h} onClick={() => toggle(r.id, 'badSigns', h)} className={`border border-slate-200 text-center cursor-pointer transition-colors ${r.badSigns[h] ? 'bg-red-100' : ''}`}>{r.badSigns[h] ? '○' : ''}</td>)}
+                                        {recoveryItems.map(h => <td key={h} onClick={() => toggle(r.id, 'recovery', h)} className={`border border-slate-200 text-center cursor-pointer transition-colors ${r.recovery[h] ? 'bg-green-100' : ''}`}>{r.recovery[h] ? '○' : ''}</td>)}
                                         <td onClick={() => update(r.id, 'medication', !r.medication)} className={`border border-slate-200 text-center cursor-pointer ${r.medication ? 'bg-purple-100' : ''}`}>{r.medication ? '○' : ''}</td>
                                         <td className="p-1 border border-slate-200"><input type="text" value={r.note} onChange={e => update(r.id, 'note', e.target.value)} className="w-full text-xs outline-none" /></td>
+                                        <td className="p-1 border border-slate-200 text-center"><button onClick={() => deleteRow(r.id)} className="text-slate-300 hover:text-red-500 text-xs">✕</button></td>
                                     </tr>
                                 ))}
                             </tbody>
