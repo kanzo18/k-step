@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>K-STEP Cloud App</title>
+    
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://www.gstatic.com YOUR_PA_URL_DOMAIN;">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -17,7 +20,6 @@
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-        // --- 修正済みのFirebase設定 ---
         const firebaseConfig = {
             apiKey: "AIzaSyAlHizRGdtO-DiqP72zfm8CfPN72lMF6uE",
             authDomain: "k-step-3918.firebaseapp.com",
@@ -29,7 +31,6 @@
 
         const POWER_AUTOMATE_WEBHOOK_URL = "YOUR_POWER_AUTOMATE_URL";
 
-        // 初期化エラーチェック
         let app, auth, db;
         try {
             app = initializeApp(firebaseConfig);
@@ -152,7 +153,7 @@
                     <main className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
                         <table className="w-full text-left border-collapse">
                             <thead>
-                                <tr className="bg-slate-900 text-white text-[10px] uppercase tracking-widest font-bold font-black">
+                                <tr className="bg-slate-900 text-white text-[10px] uppercase tracking-widest font-bold">
                                     <th className="p-4 border-r border-slate-800">日付</th>
                                     <th className="p-4 text-center border-r border-slate-800 text-amber-400">眠気</th>
                                     <th className="p-4">ステータス</th>
