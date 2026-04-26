@@ -1,233 +1,260 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>K-STEP 体調管理シート</title>
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        .vertical-text { writing-mode: vertical-rl; height: 140px; font-weight: normal; }
-        .no-vertical { writing-mode: horizontal-tb; height: auto; }
-        thead tr:nth-child(1) th { position: sticky; top: 0; z-index: 50; }
-        thead tr:nth-child(2) th { position: sticky; top: 40px; z-index: 50; }
-        .sticky-col-1 { position: sticky; left: 0; z-index: 40; background: white; }
-        .sticky-col-2 { position: sticky; left: 100px; z-index: 40; background: white; }
-        .table-container { height: calc(100vh - 160px); overflow: auto; }
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #f1f1f1; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-    </style>
-</head>
-<body class="bg-slate-100 text-slate-800">
-    <div id="root"></div>
+import React, { useState, useEffect, useMemo } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
+import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, query, deleteDoc } from 'firebase/firestore';
 
-    <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+/**
+ * 【設定】
+ * 1. Power Automateで「HTTP要求の受信時」トリガーを作成し、
+ * 発行されたURLを下の空欄に貼り付けてください。
+ */
+const POWER_AUTOMATE_WEBHOOK_URL = ""; 
 
-        const defaultSettings = {
-            conditions: ['気分', '睡眠', '食事', 'ストレス'],
-            goodSigns: ['まあいいか', '心に余裕がある', '適度な身だしなみ', '入浴が心地よい', '同じ時間に起きる', '適度な寝だめ'],
-            warningSigns: ['満腹感がない', '過眠', '何も考えられない', '言葉数が少ない', 'やけ食い', '字が乱雑になる', '収納癖が出る'],
-            badSigns: ['眠気を全く感じない', '物音に過敏', '家族を敵視', '散財・遠方へ行く', 'やることが多い', '脱着衣が激しい', '全能感'],
-            recoveryItems: ['コーヒー', 'スキンケア', 'マインドフルネス']
-        };
+// Firebaseの初期化（この環境の提供する変数を使用）
+const firebaseConfig = JSON.parse(__firebase_config);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'kstep-integrated-app';
 
-        function App() {
-            const [currentMonth, setCurrentMonth] = useState(() => {
-                const now = new Date();
-                return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-            });
+const DEFAULT_SETTINGS = {
+  conditions: ['気分', '睡眠', '食事', 'ストレス'],
+  goodSigns: ['まあいいか', '心に余裕がある', '適度な身だしなみ'],
+  warningSigns: ['眠気', '満腹感がない', '過眠', '言葉数が少ない', '字が乱雑'],
+  badSigns: ['眠気を全く感じない', '物音に過敏', '全能感'],
+  recoveryItems: ['コーヒー', 'スキンケア', 'マインドフルネス']
+};
 
-            const [allRecords, setAllRecords] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('kstep_all_data');
-                    return saved ? JSON.parse(saved) : [];
-                } catch (e) { return []; }
-            });
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [records, setRecords] = useState([]);
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [statusMessage, setStatusMessage] = useState("");
 
-            const [settings, setSettings] = useState(() => {
-                try {
-                    const saved = localStorage.getItem('kstep_settings');
-                    return saved ? JSON.parse(saved) : defaultSettings;
-                } catch (e) { return defaultSettings; }
-            });
+  // 1. 認証処理
+  useEffect(() => {
+    const initAuth = async () => {
+      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+        await signInWithCustomToken(auth, __initial_auth_token);
+      } else {
+        await signInAnonymously(auth);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      if (u) setStatusMessage("オンライン: データを同期中");
+    });
+    return () => unsubscribe();
+  }, []);
 
-            const [isConfigOpen, setIsConfigOpen] = useState(false);
+  // 2. リアルタイムデータ同期 (Firestore)
+  useEffect(() => {
+    if (!user) return;
+    const q = collection(db, 'artifacts', appId, 'users', user.uid, 'records');
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
+      setRecords(data);
+    }, (err) => {
+      console.error("Firestore Error:", err);
+      setStatusMessage("エラー: データの読み込みに失敗しました");
+    });
+    return () => unsubscribe();
+  }, [user]);
 
-            useEffect(() => {
-                localStorage.setItem('kstep_all_data', JSON.stringify(allRecords));
-            }, [allRecords]);
+  // 3. Power Automateへの通知関数
+  const sendToPowerAutomate = async (record, itemName) => {
+    if (!POWER_AUTOMATE_WEBHOOK_URL) {
+      console.log("Power Automate URLが未設定です");
+      return;
+    }
 
-            useEffect(() => {
-                localStorage.setItem('kstep_settings', JSON.stringify(settings));
-            }, [settings]);
+    try {
+      const payload = {
+        userId: user.uid,
+        userName: "ユーザー", // 必要に応じて変更
+        date: record.date,
+        time: record.time,
+        triggerItem: itemName,
+        message: `${record.time}の記録で「${itemName}」の注意サインがチェックされました。`
+      };
 
-            const filteredRecords = useMemo(() => {
-                return allRecords
-                    .filter(r => r.date && r.date.startsWith(currentMonth))
-                    .sort((a, b) => {
-                        if (a.date !== b.date) return a.date.localeCompare(b.date);
-                        const timeOrder = { '朝': 1, '昼': 2, '晩': 3 };
-                        return (timeOrder[a.time] || 0) - (timeOrder[b.time] || 0);
-                    });
-            }, [allRecords, currentMonth]);
+      const response = await fetch(POWER_AUTOMATE_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
 
-            const addRecord = () => {
-                const today = new Date();
-                const defaultDate = today.toISOString().startsWith(currentMonth) 
-                    ? today.toISOString().split('T')[0] 
-                    : `${currentMonth}-01`;
-                const newRecord = {
-                    id: Date.now(),
-                    date: defaultDate,
-                    time: '朝',
-                    conditions: {},
-                    goodSigns: {},
-                    warningSigns: {},
-                    badSigns: {},
-                    recovery: {},
-                    medication: false,
-                    note: ''
-                };
-                setAllRecords([...allRecords, newRecord]);
-            };
+      if (response.ok) {
+        setStatusMessage(`通知成功: LINEへの送信を依頼しました (${itemName})`);
+      }
+    } catch (error) {
+      console.error("PA Error:", error);
+      setStatusMessage("通知失敗: Power Automateへの接続に失敗しました");
+    }
+  };
 
-            const updateRecord = (id, field, value, subField) => {
-                setAllRecords(prev => prev.map(r => r.id === id ? (subField ? { ...r, [field]: { ...r[field], [subField]: value } } : { ...r, [field]: value }) : r));
-            };
+  // 4. レコード更新・追加アクション
+  const updateRecord = async (id, field, value, subField) => {
+    if (!user) return;
+    const record = records.find(r => r.id === id);
+    if (!record) return;
 
-            const toggleSign = (id, category, item) => {
-                setAllRecords(prev => prev.map(r => r.id === id ? { ...r, [category]: { ...r[category], [item]: !r[category]?.[item] } } : r));
-            };
+    let updated;
+    if (subField) {
+      updated = { ...record, [field]: { ...record[field], [subField]: value } };
+    } else {
+      updated = { ...record, [field]: value };
+    }
 
-            const updateSettingItem = (category, index, value) => {
-                const newItems = [...settings[category]];
-                if (value === null) {
-                    newItems.splice(index, 1);
-                } else {
-                    newItems[index] = value;
-                }
-                setSettings({ ...settings, [category]: newItems });
-            };
+    // Firestoreへ保存
+    await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records', id), updated);
 
-            const addSettingItem = (category) => {
-                setSettings({ ...settings, [category]: [...settings[category], '新項目'] });
-            };
+    // 【重要】注意サインがONになったらPower Automateを叩く
+    if (field === 'warningSigns' && value === true) {
+      sendToPowerAutomate(updated, subField);
+    }
+  };
 
-            return (
-                <div className="p-2 md:p-4 max-w-[1600px] mx-auto min-h-screen">
-                    <div className="bg-white p-4 rounded-xl shadow-sm mb-4 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-[60]">
-                        <div className="flex items-center gap-4">
-                            <h1 className="text-xl font-bold text-indigo-900">K-STEP 体調管理</h1>
-                            <input type="month" value={currentMonth} onChange={(e) => setCurrentMonth(e.target.value)} className="bg-slate-100 p-2 rounded-lg border border-slate-200 text-sm font-bold outline-none" />
-                        </div>
-                        <div className="flex gap-2">
-                            <button onClick={() => setIsConfigOpen(true)} className="bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-300 transition-all">⚙ 項目設定</button>
-                            <button onClick={addRecord} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 shadow-md transition-all">＋ 記録追加</button>
-                        </div>
+  const addDailyGroup = async () => {
+    if (!user) return;
+    const today = new Date().toISOString().split('T')[0];
+    const times = ['朝', '昼', '晩'];
+    
+    for (const t of times) {
+      const id = `${today}-${t}`;
+      const newDoc = {
+        id, date: today, time: t,
+        conditions: {}, goodSigns: {}, warningSigns: {}, badSigns: {}, recovery: {},
+        medication: false, note: ''
+      };
+      await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records', id), newDoc);
+    }
+    setStatusMessage(`${today} の枠を作成しました`);
+  };
+
+  const filteredRecords = useMemo(() => {
+    return records
+      .filter(r => r.date?.startsWith(currentMonth))
+      .sort((a, b) => a.date.localeCompare(b.date) || (a.time === '朝' ? -1 : a.time === '晩' ? 1 : 0));
+  }, [records, currentMonth]);
+
+  if (!user) return <div className="flex h-screen items-center justify-center">認証中...</div>;
+
+  return (
+    <div className="min-h-screen bg-slate-50 p-2 md:p-6 font-sans">
+      {/* 上部ナビゲーション */}
+      <div className="max-w-6xl mx-auto mb-6 bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="bg-indigo-600 p-2 rounded-lg shadow-indigo-200 shadow-lg">
+            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          </div>
+          <div>
+            <h1 className="text-lg font-black text-slate-800 leading-tight">K-STEP Cloud</h1>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{statusMessage || "同期完了"}</p>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <input 
+            type="month" 
+            value={currentMonth} 
+            onChange={e => setCurrentMonth(e.target.value)} 
+            className="border-slate-200 border rounded-lg px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
+          />
+          <button 
+            onClick={addDailyGroup}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-bold transition-all active:scale-95 shadow-md shadow-indigo-100"
+          >
+            ＋ 今日を追加
+          </button>
+        </div>
+      </div>
+
+      {/* メインテーブル */}
+      <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-900 text-white text-[10px] uppercase tracking-widest">
+                <th className="p-4 border-r border-slate-800 sticky left-0 bg-slate-900 z-10">日時</th>
+                <th className="p-4 text-center border-r border-slate-800">状態</th>
+                {settings.warningSigns.map(s => (
+                  <th key={s} className="p-4 text-center border-r border-slate-800 text-amber-400">{s}</th>
+                ))}
+                <th className="p-4 border-r border-slate-800">備考</th>
+                <th className="p-4"></th>
+              </tr>
+            </thead>
+            <tbody className="text-xs">
+              {filteredRecords.map(r => (
+                <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
+                  <td className="p-3 border-r border-slate-100 sticky left-0 bg-white font-bold text-slate-600">
+                    <div className="flex flex-col">
+                      <span>{r.date.split('-').slice(1).join('/')}</span>
+                      <span className="text-[10px] text-indigo-500">{r.time}</span>
                     </div>
+                  </td>
+                  <td className="p-0 border-r border-slate-100">
+                    <select 
+                      value={r.conditions?.['気分'] || ''}
+                      onChange={e => updateRecord(r.id, 'conditions', e.target.value, '気分')}
+                      className="w-full h-12 text-center bg-transparent font-bold text-slate-700 outline-none appearance-none"
+                    >
+                      <option value="">-</option>
+                      {[1,2,3,4,5].map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </td>
+                  {settings.warningSigns.map(s => (
+                    <td 
+                      key={s}
+                      onClick={() => updateRecord(r.id, 'warningSigns', !r.warningSigns?.[s], s)}
+                      className={`p-0 border-r border-slate-100 text-center cursor-pointer transition-all ${r.warningSigns?.[s] ? 'bg-amber-50 text-amber-600 font-black' : 'text-slate-300'}`}
+                    >
+                      <div className="h-12 flex items-center justify-center text-lg">
+                        {r.warningSigns?.[s] ? '●' : '○'}
+                      </div>
+                    </td>
+                  ))}
+                  <td className="p-2 border-r border-slate-100">
+                    <input 
+                      type="text" 
+                      value={r.note || ''} 
+                      onChange={e => updateRecord(r.id, 'note', e.target.value)}
+                      placeholder="メモ..."
+                      className="w-full bg-transparent outline-none italic text-slate-500"
+                    />
+                  </td>
+                  <td className="p-2 text-center">
+                    <button 
+                      onClick={async () => {
+                        if(window.confirm("削除しますか？")) {
+                          await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records', r.id));
+                        }
+                      }}
+                      className="text-slate-300 hover:text-red-500 transition-colors"
+                    >✕</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {filteredRecords.length === 0 && (
+          <div className="p-20 text-center text-slate-400">
+            <p>データがありません。「今日を追加」ボタンを押して記録を始めましょう。</p>
+          </div>
+        )}
+      </div>
 
-                    <div className="table-container bg-white rounded-xl shadow-lg border border-slate-200">
-                        <table className="w-max border-collapse">
-                            <thead>
-                                <tr className="bg-slate-800 text-white text-[10px]">
-                                    <th className="p-2 border border-slate-700 sticky-col-1 bg-slate-800" rowSpan="2">日付</th>
-                                    <th className="p-2 border border-slate-700 sticky-col-2 bg-slate-800 w-16" rowSpan="2">時間</th>
-                                    <th className="border border-slate-700 p-1" colSpan={settings.conditions.length}>状態(1-5)</th>
-                                    <th className="border border-slate-700 p-1 bg-blue-900/40" colSpan={settings.goodSigns.length}>良好サイン</th>
-                                    <th className="border border-slate-700 p-1 bg-amber-900/40" colSpan={settings.warningSigns.length}>注意サイン</th>
-                                    <th className="border border-slate-700 p-1 bg-red-900/40" colSpan={settings.badSigns.length}>悪化サイン</th>
-                                    <th className="border border-slate-700 p-1 bg-emerald-900/40" colSpan={settings.recoveryItems.length}>リカバリー</th>
-                                    <th className="p-2 border border-slate-700 w-12" rowSpan="2">頓服</th>
-                                    <th className="p-2 border border-slate-700 min-w-[200px]" rowSpan="2">備考</th>
-                                    <th className="border border-slate-700 w-10" rowSpan="2"></th>
-                                </tr>
-                                <tr className="bg-slate-100 text-slate-600 text-[10px]">
-                                    {settings.conditions.map(h => <th key={h} className="vertical-text border border-slate-200 p-1">{h}</th>)}
-                                    {settings.goodSigns.map(h => <th key={h} className="vertical-text border border-slate-200 p-1 text-blue-700">{h}</th>)}
-                                    {settings.warningSigns.map(h => <th key={h} className="vertical-text border border-slate-200 p-1 text-amber-700">{h}</th>)}
-                                    {settings.badSigns.map(h => <th key={h} className="vertical-text border border-slate-200 p-1 text-red-700">{h}</th>)}
-                                    {settings.recoveryItems.map(h => <th key={h} className="vertical-text border border-slate-200 p-1 text-emerald-700">{h}</th>)}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filteredRecords.map(r => (
-                                    <tr key={r.id} className="hover:bg-indigo-50/50 border-b border-slate-100 transition-colors group">
-                                        <td className="p-1 border border-slate-200 sticky-col-1 group-hover:bg-indigo-50">
-                                            <input type="date" value={r.date} onChange={(e) => updateRecord(r.id, 'date', e.target.value)} className="w-full text-xs outline-none bg-transparent" />
-                                        </td>
-                                        <td className="p-1 border border-slate-200 sticky-col-2 group-hover:bg-indigo-50">
-                                            <select value={r.time} onChange={(e) => updateRecord(r.id, 'time', e.target.value)} className="w-full text-xs font-bold outline-none bg-transparent appearance-none text-center">
-                                                <option>朝</option><option>昼</option><option>晩</option>
-                                            </select>
-                                        </td>
-                                        {settings.conditions.map(h => (
-                                            <td key={h} className="border border-slate-200 p-0 text-center">
-                                                <select value={r.conditions?.[h] || ''} onChange={(e) => updateRecord(r.id, 'conditions', e.target.value, h)} className="w-full p-2 outline-none bg-transparent text-center font-bold appearance-none">
-                                                    <option value="">-</option>{[1,2,3,4,5].map(v => <option key={v} value={v}>{v}</option>)}
-                                                </select>
-                                            </td>
-                                        ))}
-                                        {settings.goodSigns.map(h => <td key={h} onClick={() => toggleSign(r.id, 'goodSigns', h)} className={`border border-slate-200 text-center cursor-pointer ${r.goodSigns?.[h] ? 'bg-blue-100 text-blue-700' : ''}`}>{r.goodSigns?.[h] ? '○' : ''}</td>)}
-                                        {settings.warningSigns.map(h => <td key={h} onClick={() => toggleSign(r.id, 'warningSigns', h)} className={`border border-slate-200 text-center cursor-pointer ${r.warningSigns?.[h] ? 'bg-amber-100 text-amber-700' : ''}`}>{r.warningSigns?.[h] ? '○' : ''}</td>)}
-                                        {settings.badSigns.map(h => <td key={h} onClick={() => toggleSign(r.id, 'badSigns', h)} className={`border border-slate-200 text-center cursor-pointer ${r.badSigns?.[h] ? 'bg-red-100 text-red-700' : ''}`}>{r.badSigns?.[h] ? '○' : ''}</td>)}
-                                        {settings.recoveryItems.map(h => <td key={h} onClick={() => toggleSign(r.id, 'recovery', h)} className={`border border-slate-200 text-center cursor-pointer ${r.recovery?.[h] ? 'bg-emerald-100 text-emerald-700' : ''}`}>{r.recovery?.[h] ? '○' : ''}</td>)}
-                                        <td onClick={() => updateRecord(r.id, 'medication', !r.medication)} className={`border border-slate-200 text-center cursor-pointer ${r.medication ? 'bg-purple-100 text-purple-700' : ''}`}>{r.medication ? '○' : ''}</td>
-                                        <td className="p-1 border border-slate-200"><input type="text" value={r.note || ''} onChange={(e) => updateRecord(r.id, 'note', e.target.value)} className="w-full text-[10px] outline-none bg-transparent" placeholder="メモ..." /></td>
-                                        <td className="border border-slate-200 text-center"><button onClick={() => setAllRecords(allRecords.filter(x => x.id !== r.id))} className="text-slate-300 hover:text-red-500 p-1">✕</button></td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {isConfigOpen && (
-                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                            <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
-                                <div className="p-6 border-b flex justify-between items-center bg-slate-50">
-                                    <h2 className="text-xl font-bold">項目設定のカスタマイズ</h2>
-                                    <button onClick={() => setIsConfigOpen(false)} className="text-slate-400 hover:text-slate-600 text-2xl">✕</button>
-                                </div>
-                                <div className="p-6 overflow-y-auto space-y-8">
-                                    {Object.entries({
-                                        conditions: '基本状態',
-                                        goodSigns: '良好サイン',
-                                        warningSigns: '注意サイン',
-                                        badSigns: '悪化サイン',
-                                        recoveryItems: 'リカバリー'
-                                    }).map(([key, label]) => (
-                                        <div key={key}>
-                                            <h3 className="font-bold mb-3 text-slate-700 flex items-center gap-2">
-                                                <span className="w-1.5 h-6 bg-indigo-500 rounded-full"></span>
-                                                {label}
-                                            </h3>
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                                                {settings[key].map((item, idx) => (
-                                                    <div key={idx} className="flex gap-1">
-                                                        <input type="text" value={item} onChange={(e) => updateSettingItem(key, idx, e.target.value)} className="flex-grow p-2 bg-slate-50 border rounded-lg text-sm outline-none" />
-                                                        <button onClick={() => updateSettingItem(key, idx, null)} className="text-slate-300 hover:text-red-500">✕</button>
-                                                    </div>
-                                                ))}
-                                                <button onClick={() => addSettingItem(key)} className="border-2 border-dashed border-slate-200 text-slate-400 p-2 rounded-lg text-sm">＋ 追加</button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                                <div className="p-6 border-t bg-slate-50 text-right">
-                                    <button onClick={() => setIsConfigOpen(false)} className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold">閉じる</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            );
-        }
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
-</body>
-</html>
+      <footer className="max-w-6xl mx-auto mt-6 flex justify-between items-center text-[10px] text-slate-400 font-medium px-4">
+        <p>User ID: {user.uid}</p>
+        <p>© 2024 K-STEP Digital Health Management</p>
+      </footer>
+    </div>
+  );
+}
