@@ -13,35 +13,31 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        // Firebase SDKs
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-        // ==========================================
-        // 1. Firebaseの設定（Firebaseコンソールから取得した内容に書き換えてください）
-        // ==========================================
+        // --- 修正済みのFirebase設定 ---
         const firebaseConfig = {
             apiKey: "AIzaSyAlHizRGdtO-DiqP72zfm8CfPN72lMF6uE",
-       authDomain: "k-step-3918.firebaseapp.com",
-
-    projectId: "k-step-3918",
-
-    storageBucket: "k-step-3918.firebasestorage.app",
-
-    messagingSenderId: "538203712492",
-
-    appId: "1:538203712492:web:9f52d031d028852f432ec9",
+            authDomain: "k-step-3918.firebaseapp.com",
+            projectId: "k-step-3918",
+            storageBucket: "k-step-3918.firebasestorage.app",
+            messagingSenderId: "538203712492",
+            appId: "1:538203712492:web:9f52d031d028852f432ec9"
         };
 
-        // ==========================================
-        // 2. Power Automate Webhook URL（取得したURLに書き換えてください）
-        // ==========================================
         const POWER_AUTOMATE_WEBHOOK_URL = "YOUR_POWER_AUTOMATE_URL";
 
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+        // 初期化エラーチェック
+        let app, auth, db;
+        try {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+        } catch (e) {
+            console.error("Firebase初期化失敗:", e);
+        }
 
         const { useState, useEffect, useMemo } = React;
 
@@ -55,7 +51,11 @@
             const [status, setStatus] = useState("接続中...");
 
             useEffect(() => {
-                signInAnonymously(auth).catch(err => setStatus("認証エラー: " + err.message));
+                if (!auth) return;
+                signInAnonymously(auth).catch(err => {
+                    console.error(err);
+                    setStatus("認証エラー: " + err.message);
+                });
                 return onAuthStateChanged(auth, (u) => {
                     setUser(u);
                     if (u) setStatus("オンライン");
@@ -63,7 +63,7 @@
             }, []);
 
             useEffect(() => {
-                if (!user) return;
+                if (!user || !db) return;
                 const q = collection(db, "users", user.uid, "records");
                 return onSnapshot(q, (snapshot) => {
                     const data = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
@@ -131,18 +131,18 @@
                     <header className="flex justify-between items-center mb-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                         <div>
                             <h1 className="text-2xl font-black text-indigo-900 tracking-tight">K-STEP Cloud</h1>
-                            <p className="text-[10px] font-mono text-slate-400">UID: {user.uid}</p>
+                            <p className="text-[10px] font-mono text-slate-400 font-bold">UID: {user.uid}</p>
                         </div>
                         <div className="flex gap-3">
                             <input 
                                 type="month" 
                                 value={currentMonth} 
                                 onChange={e => setCurrentMonth(e.target.value)}
-                                className="border rounded-lg px-3 py-2 text-sm font-bold outline-none"
+                                className="border rounded-lg px-3 py-2 text-sm font-bold outline-none border-slate-300"
                             />
                             <button 
                                 onClick={addToday}
-                                className="bg-indigo-600 text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700 transition-all"
+                                className="bg-indigo-600 text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700 transition-all active:scale-95"
                             >
                                 今日を追加
                             </button>
@@ -152,7 +152,7 @@
                     <main className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
                         <table className="w-full text-left border-collapse">
                             <thead>
-                                <tr className="bg-slate-900 text-white text-[10px] uppercase tracking-widest font-bold">
+                                <tr className="bg-slate-900 text-white text-[10px] uppercase tracking-widest font-bold font-black">
                                     <th className="p-4 border-r border-slate-800">日付</th>
                                     <th className="p-4 text-center border-r border-slate-800 text-amber-400">眠気</th>
                                     <th className="p-4">ステータス</th>
@@ -170,7 +170,7 @@
                                         >
                                             {r.warningSigns?.['眠気'] ? '●' : '○'}
                                         </td>
-                                        <td className="p-4 text-slate-400 italic text-xs">
+                                        <td className="p-4 text-slate-400 italic text-[11px]">
                                             {r.warningSigns?.['眠気'] ? '通知済み' : '未チェック'}
                                         </td>
                                     </tr>
@@ -178,7 +178,9 @@
                             </tbody>
                         </table>
                         {filteredRecords.length === 0 && (
-                            <div className="p-16 text-center text-slate-400">データがありません。</div>
+                            <div className="p-20 text-center text-slate-400 font-bold">
+                                「今日を追加」ボタンを押して記録を始めましょう
+                            </div>
                         )}
                     </main>
                 </div>
