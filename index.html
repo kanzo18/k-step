@@ -1,260 +1,194 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, query, deleteDoc } from 'firebase/firestore';
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>K-STEP Cloud App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-900">
+    <div id="root"></div>
 
-/**
- * 【設定】
- * 1. Power Automateで「HTTP要求の受信時」トリガーを作成し、
- * 発行されたURLを下の空欄に貼り付けてください。
- */
-const POWER_AUTOMATE_WEBHOOK_URL = ""; 
+    <script type="text/babel">
+        // Firebase SDKs
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-// Firebaseの初期化（この環境の提供する変数を使用）
-const firebaseConfig = JSON.parse(__firebase_config);
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'kstep-integrated-app';
+        // ==========================================
+        // 1. Firebaseの設定（Firebaseコンソールから取得した内容に書き換えてください）
+        // ==========================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyAlHizRGdtO-DiqP72zfm8CfPN72lMF6uE",
+       authDomain: "k-step-3918.firebaseapp.com",
 
-const DEFAULT_SETTINGS = {
-  conditions: ['気分', '睡眠', '食事', 'ストレス'],
-  goodSigns: ['まあいいか', '心に余裕がある', '適度な身だしなみ'],
-  warningSigns: ['眠気', '満腹感がない', '過眠', '言葉数が少ない', '字が乱雑'],
-  badSigns: ['眠気を全く感じない', '物音に過敏', '全能感'],
-  recoveryItems: ['コーヒー', 'スキンケア', 'マインドフルネス']
-};
+    projectId: "k-step-3918",
 
-export default function App() {
-  const [user, setUser] = useState(null);
-  const [currentMonth, setCurrentMonth] = useState(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  });
-  const [records, setRecords] = useState([]);
-  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
-  const [statusMessage, setStatusMessage] = useState("");
+    storageBucket: "k-step-3918.firebasestorage.app",
 
-  // 1. 認証処理
-  useEffect(() => {
-    const initAuth = async () => {
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-        await signInWithCustomToken(auth, __initial_auth_token);
-      } else {
-        await signInAnonymously(auth);
-      }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      if (u) setStatusMessage("オンライン: データを同期中");
-    });
-    return () => unsubscribe();
-  }, []);
+    messagingSenderId: "538203712492",
 
-  // 2. リアルタイムデータ同期 (Firestore)
-  useEffect(() => {
-    if (!user) return;
-    const q = collection(db, 'artifacts', appId, 'users', user.uid, 'records');
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
-      setRecords(data);
-    }, (err) => {
-      console.error("Firestore Error:", err);
-      setStatusMessage("エラー: データの読み込みに失敗しました");
-    });
-    return () => unsubscribe();
-  }, [user]);
+    appId: "1:538203712492:web:9f52d031d028852f432ec9",
 
-  // 3. Power Automateへの通知関数
-  const sendToPowerAutomate = async (record, itemName) => {
-    if (!POWER_AUTOMATE_WEBHOOK_URL) {
-      console.log("Power Automate URLが未設定です");
-      return;
-    }
+    measurementId: "G-QYTJPJ2CH3" 
+        };
 
-    try {
-      const payload = {
-        userId: user.uid,
-        userName: "ユーザー", // 必要に応じて変更
-        date: record.date,
-        time: record.time,
-        triggerItem: itemName,
-        message: `${record.time}の記録で「${itemName}」の注意サインがチェックされました。`
-      };
+        // ==========================================
+        // 2. Power Automate Webhook URL（取得したURLに書き換えてください）
+        // ==========================================
+        const POWER_AUTOMATE_WEBHOOK_URL = "YOUR_POWER_AUTOMATE_URL";
 
-      const response = await fetch(POWER_AUTOMATE_WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
 
-      if (response.ok) {
-        setStatusMessage(`通知成功: LINEへの送信を依頼しました (${itemName})`);
-      }
-    } catch (error) {
-      console.error("PA Error:", error);
-      setStatusMessage("通知失敗: Power Automateへの接続に失敗しました");
-    }
-  };
+        const { useState, useEffect, useMemo } = React;
 
-  // 4. レコード更新・追加アクション
-  const updateRecord = async (id, field, value, subField) => {
-    if (!user) return;
-    const record = records.find(r => r.id === id);
-    if (!record) return;
+        function App() {
+            const [user, setUser] = useState(null);
+            const [records, setRecords] = useState([]);
+            const [currentMonth, setCurrentMonth] = useState(() => {
+                const now = new Date();
+                return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            });
+            const [status, setStatus] = useState("接続中...");
 
-    let updated;
-    if (subField) {
-      updated = { ...record, [field]: { ...record[field], [subField]: value } };
-    } else {
-      updated = { ...record, [field]: value };
-    }
+            useEffect(() => {
+                signInAnonymously(auth).catch(err => setStatus("認証エラー: " + err.message));
+                return onAuthStateChanged(auth, (u) => {
+                    setUser(u);
+                    if (u) setStatus("オンライン");
+                });
+            }, []);
 
-    // Firestoreへ保存
-    await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records', id), updated);
+            useEffect(() => {
+                if (!user) return;
+                const q = collection(db, "users", user.uid, "records");
+                return onSnapshot(q, (snapshot) => {
+                    const data = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
+                    setRecords(data);
+                }, (err) => setStatus("同期エラー: " + err.message));
+            }, [user]);
 
-    // 【重要】注意サインがONになったらPower Automateを叩く
-    if (field === 'warningSigns' && value === true) {
-      sendToPowerAutomate(updated, subField);
-    }
-  };
+            const notifyPowerAutomate = async (record, itemName) => {
+                if (!POWER_AUTOMATE_WEBHOOK_URL || POWER_AUTOMATE_WEBHOOK_URL.includes("YOUR_")) return;
+                try {
+                    await fetch(POWER_AUTOMATE_WEBHOOK_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            userId: user.uid,
+                            date: record.date,
+                            time: record.time,
+                            item: itemName,
+                            message: `${record.time}の記録で「${itemName}」にチェックが入りました。`
+                        })
+                    });
+                } catch (e) {
+                    console.error("Webhook送信失敗", e);
+                }
+            };
 
-  const addDailyGroup = async () => {
-    if (!user) return;
-    const today = new Date().toISOString().split('T')[0];
-    const times = ['朝', '昼', '晩'];
-    
-    for (const t of times) {
-      const id = `${today}-${t}`;
-      const newDoc = {
-        id, date: today, time: t,
-        conditions: {}, goodSigns: {}, warningSigns: {}, badSigns: {}, recovery: {},
-        medication: false, note: ''
-      };
-      await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records', id), newDoc);
-    }
-    setStatusMessage(`${today} の枠を作成しました`);
-  };
+            const toggleWarning = async (id, itemName) => {
+                const record = records.find(r => r.id === id);
+                if (!record) return;
 
-  const filteredRecords = useMemo(() => {
-    return records
-      .filter(r => r.date?.startsWith(currentMonth))
-      .sort((a, b) => a.date.localeCompare(b.date) || (a.time === '朝' ? -1 : a.time === '晩' ? 1 : 0));
-  }, [records, currentMonth]);
+                const newValue = !record.warningSigns?.[itemName];
+                const updatedRecord = {
+                    ...record,
+                    warningSigns: { ...record.warningSigns, [itemName]: newValue }
+                };
 
-  if (!user) return <div className="flex h-screen items-center justify-center">認証中...</div>;
+                try {
+                    await setDoc(doc(db, "users", user.uid, "records", id), updatedRecord);
+                    if (newValue) notifyPowerAutomate(updatedRecord, itemName);
+                } catch (e) {
+                    alert("更新失敗: " + e.message);
+                }
+            };
 
-  return (
-    <div className="min-h-screen bg-slate-50 p-2 md:p-6 font-sans">
-      {/* 上部ナビゲーション */}
-      <div className="max-w-6xl mx-auto mb-6 bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="bg-indigo-600 p-2 rounded-lg shadow-indigo-200 shadow-lg">
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-          </div>
-          <div>
-            <h1 className="text-lg font-black text-slate-800 leading-tight">K-STEP Cloud</h1>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{statusMessage || "同期完了"}</p>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-2">
-          <input 
-            type="month" 
-            value={currentMonth} 
-            onChange={e => setCurrentMonth(e.target.value)} 
-            className="border-slate-200 border rounded-lg px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
-          />
-          <button 
-            onClick={addDailyGroup}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-bold transition-all active:scale-95 shadow-md shadow-indigo-100"
-          >
-            ＋ 今日を追加
-          </button>
-        </div>
-      </div>
+            const addToday = async () => {
+                const today = new Date().toISOString().split('T')[0];
+                for (const t of ['朝', '昼', '晩']) {
+                    const id = `${today}-${t}`;
+                    await setDoc(doc(db, "users", user.uid, "records", id), {
+                        id, date: today, time: t, warningSigns: {}, note: ''
+                    });
+                }
+            };
 
-      {/* メインテーブル */}
-      <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-xl shadow-slate-200/50 border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-900 text-white text-[10px] uppercase tracking-widest">
-                <th className="p-4 border-r border-slate-800 sticky left-0 bg-slate-900 z-10">日時</th>
-                <th className="p-4 text-center border-r border-slate-800">状態</th>
-                {settings.warningSigns.map(s => (
-                  <th key={s} className="p-4 text-center border-r border-slate-800 text-amber-400">{s}</th>
-                ))}
-                <th className="p-4 border-r border-slate-800">備考</th>
-                <th className="p-4"></th>
-              </tr>
-            </thead>
-            <tbody className="text-xs">
-              {filteredRecords.map(r => (
-                <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
-                  <td className="p-3 border-r border-slate-100 sticky left-0 bg-white font-bold text-slate-600">
-                    <div className="flex flex-col">
-                      <span>{r.date.split('-').slice(1).join('/')}</span>
-                      <span className="text-[10px] text-indigo-500">{r.time}</span>
-                    </div>
-                  </td>
-                  <td className="p-0 border-r border-slate-100">
-                    <select 
-                      value={r.conditions?.['気分'] || ''}
-                      onChange={e => updateRecord(r.id, 'conditions', e.target.value, '気分')}
-                      className="w-full h-12 text-center bg-transparent font-bold text-slate-700 outline-none appearance-none"
-                    >
-                      <option value="">-</option>
-                      {[1,2,3,4,5].map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </td>
-                  {settings.warningSigns.map(s => (
-                    <td 
-                      key={s}
-                      onClick={() => updateRecord(r.id, 'warningSigns', !r.warningSigns?.[s], s)}
-                      className={`p-0 border-r border-slate-100 text-center cursor-pointer transition-all ${r.warningSigns?.[s] ? 'bg-amber-50 text-amber-600 font-black' : 'text-slate-300'}`}
-                    >
-                      <div className="h-12 flex items-center justify-center text-lg">
-                        {r.warningSigns?.[s] ? '●' : '○'}
-                      </div>
-                    </td>
-                  ))}
-                  <td className="p-2 border-r border-slate-100">
-                    <input 
-                      type="text" 
-                      value={r.note || ''} 
-                      onChange={e => updateRecord(r.id, 'note', e.target.value)}
-                      placeholder="メモ..."
-                      className="w-full bg-transparent outline-none italic text-slate-500"
-                    />
-                  </td>
-                  <td className="p-2 text-center">
-                    <button 
-                      onClick={async () => {
-                        if(window.confirm("削除しますか？")) {
-                          await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records', r.id));
-                        }
-                      }}
-                      className="text-slate-300 hover:text-red-500 transition-colors"
-                    >✕</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {filteredRecords.length === 0 && (
-          <div className="p-20 text-center text-slate-400">
-            <p>データがありません。「今日を追加」ボタンを押して記録を始めましょう。</p>
-          </div>
-        )}
-      </div>
+            const filteredRecords = useMemo(() => {
+                return records
+                    .filter(r => r.date.startsWith(currentMonth))
+                    .sort((a, b) => a.date.localeCompare(b.date) || (a.time === '朝' ? -1 : a.time === '晩' ? 1 : 0));
+            }, [records, currentMonth]);
 
-      <footer className="max-w-6xl mx-auto mt-6 flex justify-between items-center text-[10px] text-slate-400 font-medium px-4">
-        <p>User ID: {user.uid}</p>
-        <p>© 2024 K-STEP Digital Health Management</p>
-      </footer>
-    </div>
-  );
-}
+            if (!user) return <div className="p-10 text-center font-bold text-slate-500">{status}</div>;
+
+            return (
+                <div className="max-w-4xl mx-auto p-4 md:p-8">
+                    <header className="flex justify-between items-center mb-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                        <div>
+                            <h1 className="text-2xl font-black text-indigo-900 tracking-tight">K-STEP Cloud</h1>
+                            <p className="text-[10px] font-mono text-slate-400">UID: {user.uid}</p>
+                        </div>
+                        <div className="flex gap-3">
+                            <input 
+                                type="month" 
+                                value={currentMonth} 
+                                onChange={e => setCurrentMonth(e.target.value)}
+                                className="border rounded-lg px-3 py-2 text-sm font-bold outline-none"
+                            />
+                            <button 
+                                onClick={addToday}
+                                className="bg-indigo-600 text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700 transition-all"
+                            >
+                                今日を追加
+                            </button>
+                        </div>
+                    </header>
+
+                    <main className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="bg-slate-900 text-white text-[10px] uppercase tracking-widest font-bold">
+                                    <th className="p-4 border-r border-slate-800">日付</th>
+                                    <th className="p-4 text-center border-r border-slate-800 text-amber-400">眠気</th>
+                                    <th className="p-4">ステータス</th>
+                                </tr>
+                            </thead>
+                            <tbody className="text-sm">
+                                {filteredRecords.map(r => (
+                                    <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                                        <td className="p-4 font-bold text-slate-600">
+                                            {r.date.split('-').slice(1).join('/')} <span className="text-indigo-500 font-normal ml-1">({r.time})</span>
+                                        </td>
+                                        <td 
+                                            onClick={() => toggleWarning(r.id, '眠気')}
+                                            className={`p-4 text-center cursor-pointer text-2xl transition-all ${r.warningSigns?.['眠気'] ? 'bg-amber-50 text-amber-600' : 'text-slate-200'}`}
+                                        >
+                                            {r.warningSigns?.['眠気'] ? '●' : '○'}
+                                        </td>
+                                        <td className="p-4 text-slate-400 italic text-xs">
+                                            {r.warningSigns?.['眠気'] ? '通知済み' : '未チェック'}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        {filteredRecords.length === 0 && (
+                            <div className="p-16 text-center text-slate-400">データがありません。</div>
+                        )}
+                    </main>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
