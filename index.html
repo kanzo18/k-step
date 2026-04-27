@@ -3,15 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>K-STEP 体調管理シート</title>
-    <!-- React & Babel -->
+    <title>K-STEP 体調管理シート (Google同期版)</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- 確実に動くFirebaseの互換ライブラリ -->
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
@@ -33,7 +30,7 @@
 
     <script type="text/babel">
         // ==========================================
-        // 1. Firebase設定 (反映済み)
+        // 1. Firebase設定
         // ==========================================
         const firebaseConfig = {
             apiKey: "AIzaSyAlHizRGdtO-DiqP72zfm8CfPN72lMF6uE",
@@ -44,17 +41,13 @@
             appId: "1:538203712492:web:9f52d031d028852f432ec9"
         };
 
-        // ==========================================
-        // 2. Power Automate Webhook URL
-        // ==========================================
-        const POWER_AUTOMATE_WEBHOOK_URL = ""; 
-
         // Firebase初期化
         if (!firebase.apps.length) {
             firebase.initializeApp(firebaseConfig);
         }
         const auth = firebase.auth();
         const db = firebase.firestore();
+        const googleProvider = new firebase.auth.GoogleAuthProvider();
 
         const { useState, useEffect, useMemo } = React;
 
@@ -78,16 +71,23 @@
             const [settings, setSettings] = useState(defaultSettings);
             const [isConfigOpen, setIsConfigOpen] = useState(false);
 
-            // --- 認証とデータ取得 ---
+            // --- Google認証 ---
             useEffect(() => {
-                auth.signInAnonymously().catch(err => setStatus("認証エラー: " + err.message));
                 const unsubscribeAuth = auth.onAuthStateChanged((u) => {
                     setUser(u);
-                    if (u) setStatus("オンライン");
+                    if (u) {
+                        setStatus("オンライン");
+                    } else {
+                        setStatus("ログインが必要です");
+                    }
                 });
                 return () => unsubscribeAuth();
             }, []);
 
+            const login = () => auth.signInWithPopup(googleProvider);
+            const logout = () => { if(confirm("ログアウトしますか？")) auth.signOut(); };
+
+            // --- ユーザーデータの取得 ---
             useEffect(() => {
                 if (!user) return;
 
@@ -123,25 +123,6 @@
                         return (timeOrder[a.time] || 0) - (timeOrder[b.time] || 0);
                     });
             }, [allRecords, currentMonth]);
-
-            // --- Power Automate 通知処理 ---
-            const notifyPA = async (record, itemName) => {
-                if (!POWER_AUTOMATE_WEBHOOK_URL) return;
-                try {
-                    await fetch(POWER_AUTOMATE_WEBHOOK_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            userId: user.uid,
-                            date: record.date,
-                            time: record.time,
-                            item: itemName
-                        })
-                    });
-                } catch (e) {
-                    console.error("Webhook Error", e);
-                }
-            };
 
             // --- アクション ---
             const saveSettings = async (newSettings) => {
@@ -195,13 +176,7 @@
                     ...record,
                     [category]: { ...record[category], [item]: newValue }
                 };
-
                 await db.collection("users").doc(user.uid).collection("records").doc(id).set(updated);
-
-                // 注意サインがONになったら通知
-                if (category === 'warningSigns' && newValue) {
-                    notifyPA(updated, item);
-                }
             };
 
             const deleteRecord = async (id) => {
@@ -219,7 +194,22 @@
                 saveSettings({ ...settings, [category]: newItems });
             };
 
-            if (!user) return <div className="p-10 text-center font-bold text-slate-500">{status}</div>;
+            // ログイン画面
+            if (!user) {
+                return (
+                    <div className="flex flex-col items-center justify-center h-screen bg-slate-50">
+                        <h1 className="text-2xl font-black text-indigo-700 mb-6">K-STEP 体調管理</h1>
+                        <button 
+                            onClick={login}
+                            className="bg-white border border-slate-300 text-slate-700 px-6 py-3 rounded-full font-bold shadow-sm hover:shadow-md transition-all flex items-center gap-3"
+                        >
+                            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="20" />
+                            Googleでログインして同期
+                        </button>
+                        <p className="mt-4 text-xs text-slate-400">{status}</p>
+                    </div>
+                );
+            }
 
             return (
                 <div className="min-h-screen flex flex-col">
@@ -233,7 +223,10 @@
                                 onChange={(e) => setCurrentMonth(e.target.value)} 
                                 className="border rounded px-2 py-1 font-bold text-sm"
                             />
-                            <span className="text-xs text-slate-400">UID: {user.uid}</span>
+                            <div className="flex flex-col">
+                                <span className="text-[10px] text-slate-400">UID: {user.uid.substring(0,8)}...</span>
+                                <button onClick={logout} className="text-[10px] text-red-400 hover:text-red-600 text-left underline">ログアウト</button>
+                            </div>
                         </div>
                         <div className="flex gap-2">
                             <button onClick={() => setIsConfigOpen(true)} className="text-slate-500 hover:text-slate-800 text-sm font-bold">⚙ 設定</button>
@@ -241,12 +234,12 @@
                                 onClick={addRecordGroup} 
                                 className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all"
                             >
-                                ＋ 今日を追加(朝昼晩)
+                                ＋ 今日を追加
                             </button>
                         </div>
                     </div>
 
-                    {/* テーブルエリア */}
+                    {/* テーブルエリア (以下、元のテーブルロジックと同じ) */}
                     <div className="flex-grow table-container p-2 md:p-4">
                         <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                             <table className="border-collapse text-[11px] w-max">
@@ -255,10 +248,10 @@
                                         <th className="sticky-col-1 bg-slate-800 p-2 border border-slate-700" rowSpan="2">日付</th>
                                         <th className="sticky-col-2 bg-slate-800 p-2 border border-slate-700" rowSpan="2">時間</th>
                                         <th className="p-1 border border-slate-700 text-center" colSpan={settings.conditions.length}>状態(1-5)</th>
-                                        <th className="p-1 border border-slate-700 bg-blue-900/50" colSpan={settings.goodSigns.length}>良好サイン</th>
-                                        <th className="p-1 border border-slate-700 bg-amber-900/50" colSpan={settings.warningSigns.length}>注意サイン</th>
-                                        <th className="p-1 border border-slate-700 bg-red-900/50" colSpan={settings.badSigns.length}>悪化サイン</th>
-                                        <th className="p-1 border border-slate-700 bg-emerald-900/50" colSpan={settings.recoveryItems.length}>リカバリー</th>
+                                        <th className="p-1 border border-slate-700 bg-blue-900/50" colSpan={settings.goodSigns.length}>良好</th>
+                                        <th className="p-1 border border-slate-700 bg-amber-900/50" colSpan={settings.warningSigns.length}>注意</th>
+                                        <th className="p-1 border border-slate-700 bg-red-900/50" colSpan={settings.badSigns.length}>悪化</th>
+                                        <th className="p-1 border border-slate-700 bg-emerald-900/50" colSpan={settings.recoveryItems.length}>リカバリ</th>
                                         <th className="p-2 border border-slate-700" rowSpan="2">頓服</th>
                                         <th className="p-2 border border-slate-700 min-w-[150px]" rowSpan="2">備考</th>
                                         <th className="p-2 border border-slate-700" rowSpan="2"></th>
