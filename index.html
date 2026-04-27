@@ -3,12 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>K-STEP 体調管理シート (Google同期版)</title>
+    <title>K-STEP</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
@@ -23,15 +22,19 @@
         .header-row-2 th { top: 33px; }
         tr:hover td { background-color: #f8fafc; }
         input[type="date"]::-webkit-inner-spin-button { display: none; }
+        
+        /* ロゴ用の微調整 */
+        .logo-text {
+            letter-spacing: -0.05em;
+            font-family: 'Inter', system-ui, sans-serif;
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800">
     <div id="root"></div>
 
     <script type="text/babel">
-        // ==========================================
-        // 1. Firebase設定
-        // ==========================================
+        // --- 1. Firebase初期設定 ---
         const firebaseConfig = {
             apiKey: "AIzaSyAlHizRGdtO-DiqP72zfm8CfPN72lMF6uE",
             authDomain: "k-step-3918.firebaseapp.com",
@@ -41,10 +44,7 @@
             appId: "1:538203712492:web:9f52d031d028852f432ec9"
         };
 
-        // Firebase初期化
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         const db = firebase.firestore();
         const googleProvider = new firebase.auth.GoogleAuthProvider();
@@ -59,189 +59,141 @@
             recoveryItems: ['コーヒー', 'スキンケア', 'マインドフルネス']
         };
 
+        // ==========================================
+        // ★★★ 2. Webhook送信関数 (LINE通知のコア) ★★★
+        // ==========================================
+        const sendWebhook = async (user, item, category, date, time) => {
+            // ↓↓↓ ★ここをPower AutomateのURLに書き換えてください★ ↓↓↓
+            const WEBHOOK_URL = "ここにPower_AutomateのURLを貼る"; 
+            
+            if (!WEBHOOK_URL.startsWith("http")) return;
+
+            try {
+                await fetch(WEBHOOK_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user: user.email,
+                        type: category === 'warningSigns' ? "注意サイン" : "悪化サイン",
+                        detail: item,
+                        date: date,
+                        time: time
+                    })
+                });
+                console.log("Webhook送信完了:", item);
+            } catch (e) { console.error("Webhook送信エラー:", e); }
+        };
+
         function App() {
             const [user, setUser] = useState(null);
-            const [status, setStatus] = useState("認証中...");
             const [currentMonth, setCurrentMonth] = useState(() => {
                 const now = new Date();
                 return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
             });
-
             const [allRecords, setAllRecords] = useState([]);
             const [settings, setSettings] = useState(defaultSettings);
             const [isConfigOpen, setIsConfigOpen] = useState(false);
 
-            // --- Google認証 ---
             useEffect(() => {
-                const unsubscribeAuth = auth.onAuthStateChanged((u) => {
-                    setUser(u);
-                    if (u) {
-                        setStatus("オンライン");
-                    } else {
-                        setStatus("ログインが必要です");
-                    }
-                });
-                return () => unsubscribeAuth();
+                const unsubscribe = auth.onAuthStateChanged(u => setUser(u));
+                return () => unsubscribe();
             }, []);
 
-            const login = () => auth.signInWithPopup(googleProvider);
-            const logout = () => { if(confirm("ログアウトしますか？")) auth.signOut(); };
-
-            // --- ユーザーデータの取得 ---
             useEffect(() => {
                 if (!user) return;
-
-                // 1. 設定項目(settings)の取得
-                const settingsRef = db.collection("users").doc(user.uid).collection("config").doc("settings");
-                settingsRef.get().then(doc => {
-                    if (doc.exists) {
-                        setSettings(doc.data());
-                    } else {
-                        settingsRef.set(defaultSettings);
-                    }
+                db.collection("users").doc(user.uid).collection("config").doc("settings").get().then(doc => {
+                    if (doc.exists) setSettings(doc.data());
                 });
-
-                // 2. 記録(records)のリアルタイム取得
-                const recordsRef = db.collection("users").doc(user.uid).collection("records");
-                const unsubscribeDb = recordsRef.onSnapshot(snapshot => {
-                    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    setAllRecords(data);
-                }, err => {
-                    console.error("データ取得エラー:", err);
+                const unsubscribe = db.collection("users").doc(user.uid).collection("records").onSnapshot(snap => {
+                    setAllRecords(snap.docs.map(d => ({ id: d.id, ...d.data() })));
                 });
-
-                return () => unsubscribeDb();
+                return () => unsubscribe();
             }, [user]);
 
-            // --- フィルタリング ---
             const filteredRecords = useMemo(() => {
-                return allRecords
-                    .filter(r => r.date && r.date.startsWith(currentMonth))
-                    .sort((a, b) => {
-                        if (a.date !== b.date) return a.date.localeCompare(b.date);
-                        const timeOrder = { '朝': 1, '昼': 2, '晩': 3 };
-                        return (timeOrder[a.time] || 0) - (timeOrder[b.time] || 0);
-                    });
+                return allRecords.filter(r => r.date?.startsWith(currentMonth)).sort((a,b) => {
+                    if (a.date !== b.date) return a.date.localeCompare(b.date);
+                    const order = { '朝': 1, '昼': 2, '晩': 3 };
+                    return (order[a.time] || 0) - (order[b.time] || 0);
+                });
             }, [allRecords, currentMonth]);
 
-            // --- アクション ---
-            const saveSettings = async (newSettings) => {
-                setSettings(newSettings);
-                if (user) {
-                    await db.collection("users").doc(user.uid).collection("config").doc("settings").set(newSettings);
-                }
-            };
-
-            const addRecordGroup = () => {
-                if (!user) return;
-                const today = new Date().toISOString().split('T')[0];
-                const newRecords = ['朝', '昼', '晩'].map(t => ({
-                    id: `${Date.now()}-${t}`,
-                    date: today,
-                    time: t,
-                    conditions: {}, goodSigns: {}, warningSigns: {}, badSigns: {}, recovery: {},
-                    medication: false, note: ''
-                }));
-                
-                const batch = db.batch();
-                newRecords.forEach(r => {
-                    const ref = db.collection("users").doc(user.uid).collection("records").doc(r.id);
-                    batch.set(ref, r);
-                });
-                batch.commit();
-            };
-
             const updateRecord = async (id, field, value, subField) => {
-                if (!user) return;
                 const record = allRecords.find(r => r.id === id);
-                if (!record) return;
-
                 let updated = { ...record };
-                if (subField) {
-                    updated[field] = { ...record[field], [subField]: value };
-                } else {
-                    updated[field] = value;
-                }
-                
+                if (subField) updated[field] = { ...record[field], [subField]: value };
+                else updated[field] = value;
                 await db.collection("users").doc(user.uid).collection("records").doc(id).set(updated);
             };
 
             const toggleSign = async (id, category, item) => {
-                if (!user) return;
                 const record = allRecords.find(r => r.id === id);
-                if (!record) return;
-
                 const newValue = !record[category]?.[item];
-                const updated = {
-                    ...record,
-                    [category]: { ...record[category], [item]: newValue }
-                };
+                const updated = { ...record, [category]: { ...record[category], [item]: newValue } };
+                
                 await db.collection("users").doc(user.uid).collection("records").doc(id).set(updated);
+
+                if (newValue && (category === 'warningSigns' || category === 'badSigns')) {
+                    sendWebhook(user, item, category, record.date, record.time);
+                }
             };
 
             const deleteRecord = async (id) => {
-                if (!user) return;
-                await db.collection("users").doc(user.uid).collection("records").doc(id).delete();
-            };
-
-            const updateSettingItem = (category, index, value) => {
-                const newItems = [...settings[category]];
-                if (value === null) {
-                    newItems.splice(index, 1);
-                } else {
-                    newItems[index] = value;
+                if(confirm("この記録を削除しますか？")) {
+                    await db.collection("users").doc(user.uid).collection("records").doc(id).delete();
                 }
-                saveSettings({ ...settings, [category]: newItems });
             };
 
-            // ログイン画面
+            const addRecordGroup = () => {
+                const today = new Date().toISOString().split('T')[0];
+                ['朝', '昼', '晩'].forEach(t => {
+                    const id = `${Date.now()}-${t}`;
+                    db.collection("users").doc(user.uid).collection("records").doc(id).set({
+                        date: today, time: t, conditions: {}, goodSigns: {}, warningSigns: {}, badSigns: {}, recovery: {}, note: ''
+                    });
+                });
+            };
+
+            const login = () => auth.signInWithPopup(googleProvider);
+            const logout = () => { if(confirm("ログアウトしますか？")) auth.signOut(); };
+
             if (!user) {
                 return (
                     <div className="flex flex-col items-center justify-center h-screen bg-slate-50">
-                        <h1 className="text-2xl font-black text-indigo-700 mb-6">K-STEP 体調管理</h1>
-                        <button 
-                            onClick={login}
-                            className="bg-white border border-slate-300 text-slate-700 px-6 py-3 rounded-full font-bold shadow-sm hover:shadow-md transition-all flex items-center gap-3"
-                        >
+                        <div className="flex flex-col items-center mb-8">
+                            <span className="text-5xl font-black text-indigo-600 logo-text italic">K-STEP</span>
+                            <div className="h-1 w-12 bg-indigo-600 rounded-full mt-1"></div>
+                        </div>
+                        <button onClick={login} className="bg-white border px-8 py-3 rounded-full font-bold shadow-sm hover:shadow-md flex items-center gap-3 transition-all border-slate-200">
                             <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="20" />
-                            Googleでログインして同期
+                            Googleでログイン
                         </button>
-                        <p className="mt-4 text-xs text-slate-400">{status}</p>
                     </div>
                 );
             }
 
             return (
-                <div className="min-h-screen flex flex-col">
-                    {/* ヘッダー */}
-                    <div className="bg-white border-b p-4 flex flex-wrap items-center justify-between gap-4">
-                        <div className="flex items-center gap-4">
-                            <h1 className="text-xl font-black text-indigo-700 tracking-tighter">K-STEP管理</h1>
-                            <input 
-                                type="month" 
-                                value={currentMonth} 
-                                onChange={(e) => setCurrentMonth(e.target.value)} 
-                                className="border rounded px-2 py-1 font-bold text-sm"
-                            />
-                            <div className="flex flex-col">
-                                <span className="text-[10px] text-slate-400">UID: {user.uid.substring(0,8)}...</span>
-                                <button onClick={logout} className="text-[10px] text-red-400 hover:text-red-600 text-left underline">ログアウト</button>
+                <div className="flex flex-col h-screen overflow-hidden">
+                    <header className="bg-white border-b p-4 flex justify-between items-center shrink-0 shadow-sm z-50">
+                        <div className="flex items-center gap-6">
+                            <div className="flex flex-col leading-none">
+                                <h1 className="text-2xl font-black text-indigo-600 logo-text italic tracking-tighter">K-STEP</h1>
+                                <span className="text-[8px] font-bold text-slate-400 tracking-widest ml-0.5">SELF-CARE</span>
+                            </div>
+                            <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-lg border border-slate-100">
+                                <input type="month" value={currentMonth} onChange={e => setCurrentMonth(e.target.value)} className="bg-transparent px-2 font-bold text-sm outline-none text-slate-600" />
                             </div>
                         </div>
-                        <div className="flex gap-2">
-                            <button onClick={() => setIsConfigOpen(true)} className="text-slate-500 hover:text-slate-800 text-sm font-bold">⚙ 設定</button>
-                            <button 
-                                onClick={addRecordGroup} 
-                                className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all"
-                            >
-                                ＋ 今日を追加
-                            </button>
+                        <div className="flex items-center gap-4">
+                            <button onClick={() => setIsConfigOpen(true)} className="text-slate-400 hover:text-slate-600 font-bold px-2 text-sm transition-colors">⚙ 設定</button>
+                            <button onClick={addRecordGroup} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-indigo-100 active:scale-95 transition-all hover:bg-indigo-700">＋ 今日を追加</button>
+                            <button onClick={logout} className="text-[10px] text-red-400 hover:text-red-500 underline ml-2">Logout</button>
                         </div>
-                    </div>
+                    </header>
 
-                    {/* テーブルエリア (以下、元のテーブルロジックと同じ) */}
-                    <div className="flex-grow table-container p-2 md:p-4">
-                        <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+                    <div className="flex-grow table-container p-4">
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                             <table className="border-collapse text-[11px] w-max">
                                 <thead>
                                     <tr className="bg-slate-800 text-white header-row-1">
@@ -252,7 +204,6 @@
                                         <th className="p-1 border border-slate-700 bg-amber-900/50" colSpan={settings.warningSigns.length}>注意</th>
                                         <th className="p-1 border border-slate-700 bg-red-900/50" colSpan={settings.badSigns.length}>悪化</th>
                                         <th className="p-1 border border-slate-700 bg-emerald-900/50" colSpan={settings.recoveryItems.length}>リカバリ</th>
-                                        <th className="p-2 border border-slate-700" rowSpan="2">頓服</th>
                                         <th className="p-2 border border-slate-700 min-w-[150px]" rowSpan="2">備考</th>
                                         <th className="p-2 border border-slate-700" rowSpan="2"></th>
                                     </tr>
@@ -267,37 +218,26 @@
                                 <tbody>
                                     {filteredRecords.map(r => (
                                         <tr key={r.id} className="border-b border-slate-100">
-                                            <td className="sticky-col-1 p-1 border border-slate-200">
-                                                <input type="date" value={r.date} onChange={(e) => updateRecord(r.id, 'date', e.target.value)} className="w-full outline-none bg-transparent" />
+                                            <td className="sticky-col-1 p-1 border border-slate-100 bg-white">
+                                                <input type="date" value={r.date} onChange={e => updateRecord(r.id, 'date', e.target.value)} className="w-full outline-none bg-transparent" />
                                             </td>
-                                            <td className="sticky-col-2 p-1 border border-slate-200 text-center font-bold">
-                                                <select value={r.time} onChange={(e) => updateRecord(r.id, 'time', e.target.value)} className="bg-transparent outline-none appearance-none">
-                                                    <option>朝</option><option>昼</option><option>晩</option>
-                                                </select>
-                                            </td>
+                                            <td className="sticky-col-2 p-1 border border-slate-100 text-center font-bold bg-white">{r.time}</td>
                                             {settings.conditions.map(h => (
-                                                <td key={h} className="border border-slate-200 text-center p-0">
-                                                    <select 
-                                                        value={r.conditions?.[h] || ''} 
-                                                        onChange={(e) => updateRecord(r.id, 'conditions', e.target.value, h)}
-                                                        className="w-full h-8 text-center outline-none bg-transparent font-bold appearance-none"
-                                                    >
-                                                        <option value="">-</option>
-                                                        {[1,2,3,4,5].map(v => <option key={v} value={v}>{v}</option>)}
+                                                <td key={h} className="border border-slate-100 text-center p-0">
+                                                    <select value={r.conditions?.[h] || ''} onChange={e => updateRecord(r.id, 'conditions', e.target.value, h)} className="w-full h-8 text-center outline-none bg-transparent font-bold appearance-none">
+                                                        <option value="">-</option>{[1,2,3,4,5].map(v => <option key={v} value={v}>{v}</option>)}
                                                     </select>
                                                 </td>
                                             ))}
-                                            {settings.goodSigns.map(h => <td key={h} onClick={() => toggleSign(r.id, 'goodSigns', h)} className={`border border-slate-200 text-center cursor-pointer ${r.goodSigns?.[h] ? 'bg-blue-50 text-blue-600 font-bold' : ''}`}>{r.goodSigns?.[h] ? '○' : ''}</td>)}
-                                            {settings.warningSigns.map(h => <td key={h} onClick={() => toggleSign(r.id, 'warningSigns', h)} className={`border border-slate-200 text-center cursor-pointer ${r.warningSigns?.[h] ? 'bg-amber-50 text-amber-600 font-bold' : ''}`}>{r.warningSigns?.[h] ? '○' : ''}</td>)}
-                                            {settings.badSigns.map(h => <td key={h} onClick={() => toggleSign(r.id, 'badSigns', h)} className={`border border-slate-200 text-center cursor-pointer ${r.badSigns?.[h] ? 'bg-red-50 text-red-600 font-bold' : ''}`}>{r.badSigns?.[h] ? '○' : ''}</td>)}
-                                            {settings.recoveryItems.map(h => <td key={h} onClick={() => toggleSign(r.id, 'recovery', h)} className={`border border-slate-200 text-center cursor-pointer ${r.recovery?.[h] ? 'bg-emerald-50 text-emerald-600 font-bold' : ''}`}>{r.recovery?.[h] ? '○' : ''}</td>)}
-                                            
-                                            <td onClick={() => updateRecord(r.id, 'medication', !r.medication)} className={`border border-slate-200 text-center cursor-pointer ${r.medication ? 'bg-purple-100 text-purple-700 font-bold' : ''}`}>{r.medication ? '○' : ''}</td>
-                                            <td className="p-1 border border-slate-200">
-                                                <input type="text" value={r.note || ''} onChange={(e) => updateRecord(r.id, 'note', e.target.value)} className="w-full outline-none bg-transparent" placeholder="..." />
+                                            {settings.goodSigns.map(h => <td key={h} onClick={() => toggleSign(r.id, 'goodSigns', h)} className={`border border-slate-100 text-center cursor-pointer transition-colors ${r.goodSigns?.[h] ? 'bg-blue-50 text-blue-600 font-bold' : ''}`}>{r.goodSigns?.[h] ? '○' : ''}</td>)}
+                                            {settings.warningSigns.map(h => <td key={h} onClick={() => toggleSign(r.id, 'warningSigns', h)} className={`border border-slate-100 text-center cursor-pointer transition-colors ${r.warningSigns?.[h] ? 'bg-amber-50 text-amber-600 font-bold' : ''}`}>{r.warningSigns?.[h] ? '○' : ''}</td>)}
+                                            {settings.badSigns.map(h => <td key={h} onClick={() => toggleSign(r.id, 'badSigns', h)} className={`border border-slate-100 text-center cursor-pointer transition-colors ${r.badSigns?.[h] ? 'bg-red-50 text-red-600 font-bold' : ''}`}>{r.badSigns?.[h] ? '○' : ''}</td>)}
+                                            {settings.recoveryItems.map(h => <td key={h} onClick={() => toggleSign(r.id, 'recovery', h)} className={`border border-slate-100 text-center cursor-pointer transition-colors ${r.recovery?.[h] ? 'bg-emerald-50 text-emerald-600 font-bold' : ''}`}>{r.recovery?.[h] ? '○' : ''}</td>)}
+                                            <td className="p-1 border border-slate-100">
+                                                <input type="text" value={r.note || ''} onChange={e => updateRecord(r.id, 'note', e.target.value)} className="w-full outline-none bg-transparent" placeholder="..." />
                                             </td>
-                                            <td className="p-1 border border-slate-200 text-center">
-                                                <button onClick={() => deleteRecord(r.id)} className="text-slate-300 hover:text-red-500">✕</button>
+                                            <td className="p-1 border border-slate-100 text-center">
+                                                <button onClick={() => deleteRecord(r.id)} className="text-slate-200 hover:text-red-400 transition-colors">✕</button>
                                             </td>
                                         </tr>
                                     ))}
@@ -306,46 +246,34 @@
                         </div>
                     </div>
 
-                    {/* 設定モーダル */}
                     {isConfigOpen && (
                         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                            <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+                            <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-slate-200">
                                 <div className="p-6 border-b flex justify-between items-center bg-slate-50">
-                                    <h2 className="text-xl font-bold">項目設定 (クラウド保存)</h2>
-                                    <button onClick={() => setIsConfigOpen(false)} className="text-slate-400 hover:text-slate-600 text-2xl">✕</button>
+                                    <h2 className="text-xl font-bold text-slate-700">項目設定</h2>
+                                    <button onClick={() => setIsConfigOpen(false)} className="text-2xl text-slate-400 hover:text-slate-600">×</button>
                                 </div>
                                 <div className="p-6 overflow-y-auto space-y-6">
-                                    {Object.entries({
-                                        conditions: '基本状態',
-                                        goodSigns: '良好サイン',
-                                        warningSigns: '注意サイン',
-                                        badSigns: '悪化サイン',
-                                        recoveryItems: 'リカバリー'
-                                    }).map(([key, label]) => (
+                                    {Object.entries({ conditions: '状態', goodSigns: '良好', warningSigns: '注意', badSigns: '悪化', recoveryItems: 'リカバリ' }).map(([key, label]) => (
                                         <div key={key}>
-                                            <h3 className="font-bold mb-2 text-indigo-700">{label}</h3>
+                                            <h3 className="font-bold mb-2 text-indigo-700 text-sm tracking-widest">{label}</h3>
                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                                 {settings[key].map((item, idx) => (
-                                                    <div key={idx} className="flex gap-1 items-center bg-slate-50 p-1 rounded border">
-                                                        <input 
-                                                            type="text" 
-                                                            value={item} 
-                                                            onChange={(e) => updateSettingItem(key, idx, e.target.value)} 
-                                                            className="flex-grow text-xs bg-transparent outline-none" 
-                                                        />
-                                                        <button onClick={() => updateSettingItem(key, idx, null)} className="text-slate-300 hover:text-red-500 px-1">×</button>
+                                                    <div key={idx} className="flex gap-1 items-center bg-slate-50 p-1.5 rounded-lg border border-slate-200 shadow-sm">
+                                                        <input type="text" value={item} onChange={e => {
+                                                            const newItems = [...settings[key]];
+                                                            newItems[idx] = e.target.value;
+                                                            setSettings({...settings, [key]: newItems});
+                                                            db.collection("users").doc(user.uid).collection("config").doc("settings").set({...settings, [key]: newItems});
+                                                        }} className="flex-grow text-xs bg-transparent outline-none text-slate-600 font-medium" />
                                                     </div>
                                                 ))}
-                                                <button 
-                                                    onClick={() => saveSettings({ ...settings, [key]: [...settings[key], '新項目'] })}
-                                                    className="border-2 border-dashed text-slate-400 text-xs py-1 rounded"
-                                                >＋ 追加</button>
                                             </div>
                                         </div>
                                     ))}
                                 </div>
-                                <div className="p-4 border-t text-right">
-                                    <button onClick={() => setIsConfigOpen(false)} className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold">閉じる</button>
+                                <div className="p-4 border-t text-right bg-slate-50">
+                                    <button onClick={() => setIsConfigOpen(false)} className="bg-indigo-600 text-white px-8 py-2 rounded-lg font-bold shadow-md hover:bg-indigo-700 transition-all">保存して閉じる</button>
                                 </div>
                             </div>
                         </div>
@@ -353,10 +281,7 @@
                 </div>
             );
         }
-
-        const container = document.getElementById('root');
-        const root = ReactDOM.createRoot(container);
-        root.render(<App />);
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
     </script>
 </body>
 </html>
