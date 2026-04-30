@@ -13,26 +13,59 @@
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 
     <style>
-.sticky-header {
-  position: -webkit-sticky; /* Safari用の記述 */
-  position: sticky;    /* これが固定の魔法の言葉です */
-  top: 0;              /* 画面の一番上に張り付く */
-  background: white;   /* 重要：これがないと下の文字が透けて重なります */
-  z-index: 1000;       /* 他の要素より常に手前に表示させる */
-  padding: 10px;       /* 見栄えの調整 */
-  border-bottom: 1px solid #ccc; /* 境目を見やすくする */
-}
+        /* --- 画面全体の固定設定 --- */
+        
+        /* 1. 最上部の青いタイトルのヘッダーを固定 */
+        header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: white;
+        }
+
+        /* 2. 表の「状態」「良好」「注意」などの大項目を固定 */
+        .header-row-1 th {
+            position: sticky;
+            top: 72px; /* ヘッダーの高さ分（環境により微調整） */
+            z-index: 50;
+            background: #1e293b; /* slate-800 */
+        }
+
+        /* 3. 縦書きの具体的な項目名（気分、睡眠など）を固定 */
+        .header-row-2 th {
+            position: sticky;
+            top: 105px; /* ヘッダー + 1行目の高さ分 */
+            z-index: 50;
+            background: #f1f5f9; /* slate-100 */
+        }
+
+        /* 4. 横にスクロールした時に「日付」「時間」を左側に固定 */
+        .sticky-col-1 { 
+            position: sticky; 
+            left: 0; 
+            z-index: 60; 
+            background: white; 
+            min-width: 100px; 
+            border-right: 2px solid #e2e8f0;
+        }
+        .sticky-col-2 { 
+            position: sticky; 
+            left: 100px; 
+            z-index: 60; 
+            background: white; 
+            min-width: 50px; 
+            border-right: 2px solid #e2e8f0;
+        }
+
+        /* 表の中の縦書きテキスト設定 */
         .vertical-text { writing-mode: vertical-rl; height: 140px; font-weight: normal; font-size: 10px; }
-        .table-container { height: calc(100vh - 180px); overflow: auto; }
-        .sticky-col-1 { position: sticky; left: 0; z-index: 40; background: white; min-width: 100px; }
-        .sticky-col-2 { position: sticky; left: 100px; z-index: 40; background: white; min-width: 50px; }
-        thead th { position: sticky; top: 0; z-index: 50; }
-        .header-row-1 th { top: 0; }
-        .header-row-2 th { top: 33px; }
+        
+        /* スクロールエリアの設定 */
+        .table-container { height: calc(100vh - 72px); overflow: auto; }
+        
         tr:hover td { background-color: #f8fafc; }
         input[type="date"]::-webkit-inner-spin-button { display: none; }
         
-        /* ロゴ用の微調整 */
         .logo-text {
             letter-spacing: -0.05em;
             font-family: 'Inter', system-ui, sans-serif;
@@ -40,25 +73,6 @@
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800">
-<!-- 1. ここから固定したいエリアを囲む -->
-  <div class="sticky-header">
-    <h1>K-STEP チェックシート</h1>
-    
-    <!-- ここに保存ボタンやユーザー表示など、隠したくないものを全部入れる -->
-    <div class="controls">
-      <span id="userNameDisplay">ユーザー: ◯◯さん</span>
-      <button id="saveBtn" onclick="saveToFirebase()">保存する</button>
-    </div>
-  </div>
-  <!-- 1. ここまでで閉じる -->
-
-  <!-- 2. この下に、スクロールさせたい中身（テーブルなど）を書く -->
-  <div id="main-content">
-    <table>
-      <!-- チェックリストの中身 -->
-    </table>
-  </div>
-</body>
     <div id="root"></div>
 
     <script type="text/babel">
@@ -87,11 +101,7 @@
             recoveryItems: ['コーヒー', 'スキンケア', 'マインドフルネス']
         };
 
-        // ==========================================
-        // ★★ 2. Webhook送信関数 (LINE通知のコア) ★★
-        // ==========================================
         const sendWebhook = async (user, item, category, date, time) => {
-            // ↓↓↓ ★ここをPower AutomateのURLに書き換えてください★ ↓↓↓
             const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbytlY6cfT8kpBEMUCrHebFlVHHWQAbR6v9-XnP1RIT3S3p_G1nnFM2eTiLARVKBu5DD5A/exec"; 
             
             if (!WEBHOOK_URL.startsWith("http")) return;
@@ -109,7 +119,6 @@
                         time: time
                     })
                 });
-                console.log("Webhook送信完了:", item);
             } catch (e) { console.error("Webhook送信エラー:", e); }
         };
 
@@ -203,7 +212,7 @@
 
             return (
                 <div className="flex flex-col h-screen overflow-hidden">
-                    <header className="bg-white border-b p-4 flex justify-between items-center shrink-0 shadow-sm z-50">
+                    <header className="bg-white border-b p-4 flex justify-between items-center shrink-0 shadow-sm z-[100]">
                         <div className="flex items-center gap-6">
                             <div className="flex flex-col leading-none">
                                 <h1 className="text-2xl font-black text-indigo-600 logo-text italic tracking-tighter">K-STEP</h1>
@@ -275,7 +284,7 @@
                     </div>
 
                     {isConfigOpen && (
-                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
                             <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-slate-200">
                                 <div className="p-6 border-b flex justify-between items-center bg-slate-50">
                                     <h2 className="text-xl font-bold text-slate-700">項目設定</h2>
