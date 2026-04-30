@@ -13,6 +13,15 @@
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 
     <style>
+.sticky-header {
+  position: -webkit-sticky; /* Safari用の記述 */
+  position: sticky;    /* これが固定の魔法の言葉です */
+  top: 0;              /* 画面の一番上に張り付く */
+  background: white;   /* 重要：これがないと下の文字が透けて重なります */
+  z-index: 1000;       /* 他の要素より常に手前に表示させる */
+  padding: 10px;       /* 見栄えの調整 */
+  border-bottom: 1px solid #ccc; /* 境目を見やすくする */
+}
         .vertical-text { writing-mode: vertical-rl; height: 140px; font-weight: normal; font-size: 10px; }
         .table-container { height: calc(100vh - 180px); overflow: auto; }
         .sticky-col-1 { position: sticky; left: 0; z-index: 40; background: white; min-width: 100px; }
@@ -31,6 +40,25 @@
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800">
+<!-- 1. ここから固定したいエリアを囲む -->
+  <div class="sticky-header">
+    <h1>K-STEP チェックシート</h1>
+    
+    <!-- ここに保存ボタンやユーザー表示など、隠したくないものを全部入れる -->
+    <div class="controls">
+      <span id="userNameDisplay">ユーザー: ◯◯さん</span>
+      <button id="saveBtn" onclick="saveToFirebase()">保存する</button>
+    </div>
+  </div>
+  <!-- 1. ここまでで閉じる -->
+
+  <!-- 2. この下に、スクロールさせたい中身（テーブルなど）を書く -->
+  <div id="main-content">
+    <table>
+      <!-- チェックリストの中身 -->
+    </table>
+  </div>
+</body>
     <div id="root"></div>
 
     <script type="text/babel">
