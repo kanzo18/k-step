@@ -13,64 +13,78 @@
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 
     <style>
-        /* --- 画面全体の固定設定 --- */
-        
-        /* 1. 最上部の青いタイトルのヘッダーを固定 */
+        /* --- 画面全体のレイアウト --- */
+        html, body {
+            height: 100%;
+            margin: 0;
+            overflow: hidden; /* 画面全体のスクロールを禁止 */
+        }
+
+        #root {
+            height: 100%;
+        }
+
+        /* 1. 最上部のヘッダー（K-STEPロゴ・追加ボタン等） */
         header {
-            position: sticky;
-            top: 0;
-            z-index: 100;
+            position: relative;
+            z-index: 110;
             background: white;
+            flex-shrink: 0;
         }
 
-        /* 2. 表の「状態」「良好」「注意」などの大項目を固定 */
-        .header-row-1 th {
-            position: sticky;
-            top: 72px; /* ヘッダーの高さ分（環境により微調整） */
-            z-index: 50;
-            background: #1e293b; /* slate-800 */
-            hight: 40px; /*
+        /* 2. テーブルを表示するスクロールエリア */
+        .table-container {
+            flex-grow: 1;
+            height: calc(100vh - 73px); /* ヘッダーの高さを引いた残りすべて */
+            overflow: auto; /* ここでテーブルのスクロールを有効にする */
+            position: relative;
+            padding: 0 1rem 1rem 1rem;
         }
 
-        /* 3. 縦書きの具体的な項目名（気分、睡眠など）を固定 */
-        .header-row-2 th {
-            position: sticky;
-            top: 112px; /* ヘッダー + 1行目の高さ分 */
-            z-index: 50;
-            background: #f1f5f9; /* slate-100 */
-        }
-
-        /* 4. 横にスクロールした時に「日付」「時間」を左側に固定 */
+        /* --- テーブルヘッダーの固定設定 --- */
+        
+        /* 日付・時間の列全体 */
         .sticky-col-1 { 
             position: sticky; 
             left: 0; 
             z-index: 60; 
             background: white; 
-            min-width: 100px; 
-            border-right: 2px solid #e2e8f0;
+            min-width: 90px;
         }
         .sticky-col-2 { 
             position: sticky; 
-            left: 100px; 
+            left: 90px; 
             z-index: 60; 
             background: white; 
-            min-width: 50px; 
-            border-right: 2px solid #e2e8f0;
+            min-width: 40px;
         }
 
-        /* 表の中の縦書きテキスト設定 */
+        /* 黒い大項目ヘッダー（状態、良好、注意など） */
+        .header-row-1 th {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: #1e293b; /* slate-800 */
+        }
+
+        /* 縦書きの小項目ヘッダー（気分、睡眠など） */
+        .header-row-2 th {
+            position: sticky;
+            top: 33px; /* 重なる場合はこの数値を調整(30px〜35px程度) */
+            z-index: 90;
+            background: #f1f5f9; /* slate-100 */
+        }
+
+        /* 日付・時間列の見出し（左上隅で固定） */
+        thead .sticky-col-1, thead .sticky-col-2 {
+            z-index: 105;
+        }
+
+        /* --- その他装飾 --- */
         .vertical-text { writing-mode: vertical-rl; height: 140px; font-weight: normal; font-size: 10px; }
-        
-        /* スクロールエリアの設定 */
-        .table-container { height: calc(100vh - 72px); overflow: auto; }
-        
         tr:hover td { background-color: #f8fafc; }
         input[type="date"]::-webkit-inner-spin-button { display: none; }
-        
-        .logo-text {
-            letter-spacing: -0.05em;
-            font-family: 'Inter', system-ui, sans-serif;
-        }
+        .logo-text { letter-spacing: -0.05em; font-family: 'Inter', system-ui, sans-serif; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800">
@@ -102,6 +116,7 @@
             recoveryItems: ['コーヒー', 'スキンケア', 'マインドフルネス']
         };
 
+        // --- 2. Webhook送信関数 ---
         const sendWebhook = async (user, item, category, date, time) => {
             const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbytlY6cfT8kpBEMUCrHebFlVHHWQAbR6v9-XnP1RIT3S3p_G1nnFM2eTiLARVKBu5DD5A/exec"; 
             
@@ -120,6 +135,7 @@
                         time: time
                     })
                 });
+                console.log("Webhook送信完了:", item);
             } catch (e) { console.error("Webhook送信エラー:", e); }
         };
 
@@ -213,7 +229,7 @@
 
             return (
                 <div className="flex flex-col h-screen overflow-hidden">
-                    <header className="bg-white border-b p-4 flex justify-between items-center shrink-0 shadow-sm z-[100]">
+                    <header className="bg-white border-b p-4 flex justify-between items-center shrink-0 shadow-sm z-50">
                         <div className="flex items-center gap-6">
                             <div className="flex flex-col leading-none">
                                 <h1 className="text-2xl font-black text-indigo-600 logo-text italic tracking-tighter">K-STEP</h1>
@@ -230,8 +246,8 @@
                         </div>
                     </header>
 
-                    <div className="flex-grow table-container p-4">
-                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div className="table-container p-4">
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden inline-block min-w-full">
                             <table className="border-collapse text-[11px] w-max">
                                 <thead>
                                     <tr className="bg-slate-800 text-white header-row-1">
@@ -321,5 +337,7 @@
         }
         ReactDOM.createRoot(document.getElementById('root')).render(<App />);
     </script>
+</body>
+</html>
 </body>
 </html>
