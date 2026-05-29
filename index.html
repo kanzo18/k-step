@@ -13,116 +13,60 @@
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 
     <style>
-     /* --- 1. ベースレイアウト（画面全体のスクロール禁止） --- */
-html, body, #root { height: 100%; margin: 0; padding: 0; overflow: hidden; background: #f8fafc; }
-        .table-container { height: calc(100vh - 70px); overflow: auto; position: relative; }
+        /* --- 1. ベースレイアウト --- */
+        html, body, #root { height: 100%; margin: 0; padding: 0; overflow: hidden; background: #f8fafc; }
+        
+        /* --- 2. テーブルエリア（スクロール領域） --- */
+        .table-container { 
+            flex-grow: 1; 
+            overflow: auto; 
+            position: relative; 
+        }
 
-/* --- 2. ページ上部ヘッダー --- */
-header {
-    position: relative;
-    z-index: 150; /* テーブル要素より必ず上にくるように設定 */
-    background: white;
-    flex-shrink: 0;
-}
+        /* stickyを正常に機能させるための必須設定 */
+        table { border-collapse: separate; border-spacing: 0; }
 
-/* --- 3. テーブルエリア（スクロール領域） --- */
-.table-container {
-    flex-grow: 1;
-    height: calc(100vh - 70px); /* ヘッダーの実際の高さに合わせて調整してください */
-    overflow: auto;
-    position: relative;
-    padding: 0 1rem 1rem 1rem;
-}
+        /* --- 3. 行の固定 (上部のヘッダー) --- */
+        .header-row-1 th {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            height: 32px; /* ズレ防止のため高さを固定 */
+            box-sizing: border-box;
+        }
 
-/* stickyを正常に機能させるための必須設定 */
-table {
-    border-collapse: separate; 
-    border-spacing: 0; /* ※修正: border-separateというプロパティはないためこちらを使用 */
-}
+        .header-row-2 th {
+            position: sticky;
+            top: 32px; /* header-row-1の高さとピッタリ合わせる */
+            z-index: 90; 
+        }
 
-/* --- 4. 行の固定 (上部のヘッダー) --- */
-.header-row-1 th {
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    background: #1e293b;
-    color: white;
-    border: 1px solid #334155;
-}
+        /* --- 4. 列の固定 (左側の列) --- */
+        .sticky-col-1 {
+            position: sticky;
+            left: 0;
+            z-index: 80;
+            width: 110px; /* 日付列の幅 */
+            min-width: 110px;
+        }
 
-.header-row-2 th {
-    position: sticky;
-    top: 35px; /* header-row-1の高さに合わせて調整してください */
-    z-index: 90; /* 1段目より少し下げる */
-    background: #f1f5f9;
-    border: 1px solid #cbd5e1;
-}
+        .sticky-col-2 {
+            position: sticky;
+            left: 110px; /* sticky-col-1の幅とピッタリ合わせる */
+            z-index: 80;
+            width: 60px; /* 時間列の幅 */
+            min-width: 60px;
+        }
 
-/* --- 5. 列の固定 (左側の列) --- */
-.sticky-col-1 {
-    position: sticky;
-    left: 0;
-    z-index: 80; /* 行ヘッダー（100, 90）より低く設定し、縦スクロール時に裏へ潜らせる */
-    background: white;
-    min-width: 100px;
-    border-right: 1px solid #cbd5e1;
-}
+        /* --- 5. 左上コーナーの固定 (行と列の交差部分) --- */
+        thead .sticky-col-1, 
+        thead .sticky-col-2 {
+            z-index: 120; /* 縦横スクロールで最前面へ */
+        }
 
-.sticky-col-2 {
-    position: sticky;
-    left: 100px; /* sticky-col-1のmin-widthと合わせる */
-    z-index: 80;
-    background: white;
-    min-width: 50px;
-    border-right: 2px solid #94a3b8;
-}
-
-/* --- 6. 左上コーナーの固定 (行と列の交差部分) --- */
-thead .sticky-col-1, 
-thead .sticky-col-2 {
-    z-index: 120; /* 縦横どちらにスクロールしても一番上にくるよう設定 */
-}
-
-/* --- 7. セル・テキストの装飾 --- */
-.vertical-text {
-    writing-mode: vertical-rl;
-    height: 140px;
-    font-weight: normal;
-    font-size: 11px;
-    padding: 10px 2px;
-    text-align: left;
-}
-
-.cell-check {
-    cursor: pointer;
-    text-align: center;
-    min-width: 38px;
-    border: 1px solid #e2e8f0;
-    font-size: 1.2rem;
-}
-
-.cell-check.active {
-    background-color: #fef08a;
-}
-
-tr:hover td {
-    background-color: #f1f5f9;
-}
-
-/* --- 8. モーダル --- */
-.modal {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.5);
-    z-index: 200; /* 画面内で最前面に表示 */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-        /* --- その他装飾 --- */
-        .vertical-text { writing-mode: vertical-rl; height: 140px; font-weight: normal; font-size: 10px; }
-        tr:hover td { background-color: #f8fafc; }
+        /* --- 6. その他装飾 --- */
+        .vertical-text { writing-mode: vertical-rl; height: 140px; font-weight: normal; font-size: 11px; padding: 10px 2px; text-align: left; }
+        tr:hover td { background-color: #f1f5f9; }
         input[type="date"]::-webkit-inner-spin-button { display: none; }
         .logo-text { letter-spacing: -0.05em; font-family: 'Inter', system-ui, sans-serif; }
     </style>
@@ -155,85 +99,6 @@ tr:hover td {
             badSigns: ['眠気を全く感じない', '物音に過敏', '家族を敵視', '散財・遠方へ行く', 'やることが多い', '脱着衣が激しい', '全能感'],
             recoveryItems: ['コーヒー', 'スキンケア', 'マインドフルネス']
         };
-        // --- ここから追加 ---
-        const App = () => {
-            return (
-                <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                    <header style={{ padding: '10px 20px', borderBottom: '1px solid #ccc' }}>
-                        <h1>K-STEP (ヘッダー)</h1>
-                    </header>
-
-                    {/* テーブルエリア */}
-                    <div className="table-container">
-                        <table>
-                            <thead>
-                                {/* 1段目：大項目 */}
-                                <tr className="header-row-1">
-                                    <th className="sticky-col-1">日付</th>
-                                    <th className="sticky-col-2">時間</th>
-                                    <th colSpan={defaultSettings.conditions.length}>状態(1-5)</th>
-                                    <th colSpan={defaultSettings.goodSigns.length}>良好</th>
-                                    <th colSpan={defaultSettings.warningSigns.length}>注意</th>
-                                    <th colSpan={defaultSettings.badSigns.length}>悪化</th>
-                                    <th colSpan={defaultSettings.recoveryItems.length}>リカバリ</th>
-                                    <th>備考</th>
-                                </tr>
-
-                                {/* 2段目：小項目（JavaScriptのmapを使って自動生成） */}
-                                <tr className="header-row-2">
-                                    <th className="sticky-col-1"></th>
-                                    <th className="sticky-col-2"></th>
-                                    
-                                    {defaultSettings.conditions.map(item => (
-                                        <th key={item}><div className="vertical-text">{item}</div></th>
-                                    ))}
-                                    {defaultSettings.goodSigns.map(item => (
-                                        <th key={item}><div className="vertical-text">{item}</div></th>
-                                    ))}
-                                    {defaultSettings.warningSigns.map(item => (
-                                        <th key={item}><div className="vertical-text">{item}</div></th>
-                                    ))}
-                                    {defaultSettings.badSigns.map(item => (
-                                        <th key={item}><div className="vertical-text">{item}</div></th>
-                                    ))}
-                                    {defaultSettings.recoveryItems.map(item => (
-                                        <th key={item}><div className="vertical-text">{item}</div></th>
-                                    ))}
-                                    
-                                    <th></th> {/* 備考用 */}
-                                </tr>
-                            </thead>
-                            
-                            <tbody>
-                                {/* テスト用のデータ行 */}
-                                <tr>
-                                    <td className="sticky-col-1">5/29</td>
-                                    <td className="sticky-col-2">13:00</td>
-                                    {/* 空のセルを大量に生成（見栄え確認用） */}
-                                    {Array.from({ length: 27 }).map((_, i) => (
-                                        <td key={i} className="cell-check"></td>
-                                    ))}
-                                    <td>テスト備考</td>
-                                </tr>
-                                {/* スクロールテスト用にもう何行か追加するとわかりやすいです */}
-                                <tr>
-                                    <td className="sticky-col-1">5/30</td>
-                                    <td className="sticky-col-2">09:00</td>
-                                    {Array.from({ length: 27 }).map((_, i) => (
-                                        <td key={i} className="cell-check"></td>
-                                    ))}
-                                    <td></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            );
-        };
-
-        // Reactコンポーネントを id="root" に描画する
-        ReactDOM.render(<App />, document.getElementById('root'));
-        // --- ここまで ---
 
         // --- 2. Webhook送信関数 ---
         const sendWebhook = async (user, item, category, date, time) => {
@@ -258,6 +123,7 @@ tr:hover td {
             } catch (e) { console.error("Webhook送信エラー:", e); }
         };
 
+        // --- 3. アプリ本体 ---
         function App() {
             const [user, setUser] = useState(null);
             const [currentMonth, setCurrentMonth] = useState(() => {
@@ -331,6 +197,7 @@ tr:hover td {
             const login = () => auth.signInWithPopup(googleProvider);
             const logout = () => { if(confirm("ログアウトしますか？")) auth.signOut(); };
 
+            // ログインしていない時の画面
             if (!user) {
                 return (
                     <div className="flex flex-col items-center justify-center h-screen bg-slate-50">
@@ -346,9 +213,11 @@ tr:hover td {
                 );
             }
 
+            // ログイン後のメイン画面
             return (
                 <div className="flex flex-col h-screen overflow-hidden">
-                    <header className="bg-white border-b p-4 flex justify-between items-center shrink-0 shadow-sm z-50">
+                    {/* ヘッダーエリア */}
+                    <header className="bg-white border-b p-4 flex justify-between items-center shrink-0 shadow-sm z-50 relative">
                         <div className="flex items-center gap-6">
                             <div className="flex flex-col leading-none">
                                 <h1 className="text-2xl font-black text-indigo-600 logo-text italic tracking-tighter">K-STEP</h1>
@@ -365,8 +234,9 @@ tr:hover td {
                         </div>
                     </header>
 
+                    {/* テーブルエリア */}
                     <div className="table-container p-4">
-                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden inline-block min-w-full">
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 inline-block min-w-full">
                             <table className="border-collapse text-[11px] w-max">
                                 <thead>
                                     <tr className="bg-slate-800 text-white header-row-1">
@@ -397,7 +267,7 @@ tr:hover td {
                                             <td className="sticky-col-2 p-1 border border-slate-100 text-center font-bold bg-white">{r.time}</td>
                                             {settings.conditions.map(h => (
                                                 <td key={h} className="border border-slate-100 text-center p-0">
-                                                    <select value={r.conditions?.[h] || ''} onChange={e => updateRecord(r.id, 'conditions', e.target.value, h)} className="w-full h-8 text-center outline-none bg-transparent font-bold appearance-none">
+                                                    <select value={r.conditions?.[h] || ''} onChange={e => updateRecord(r.id, 'conditions', e.target.value, h)} className="w-full h-8 text-center outline-none bg-transparent font-bold appearance-none cursor-pointer">
                                                         <option value="">-</option>{[1,2,3,4,5].map(v => <option key={v} value={v}>{v}</option>)}
                                                     </select>
                                                 </td>
@@ -406,11 +276,11 @@ tr:hover td {
                                             {settings.warningSigns.map(h => <td key={h} onClick={() => toggleSign(r.id, 'warningSigns', h)} className={`border border-slate-100 text-center cursor-pointer transition-colors ${r.warningSigns?.[h] ? 'bg-amber-50 text-amber-600 font-bold' : ''}`}>{r.warningSigns?.[h] ? '○' : ''}</td>)}
                                             {settings.badSigns.map(h => <td key={h} onClick={() => toggleSign(r.id, 'badSigns', h)} className={`border border-slate-100 text-center cursor-pointer transition-colors ${r.badSigns?.[h] ? 'bg-red-50 text-red-600 font-bold' : ''}`}>{r.badSigns?.[h] ? '○' : ''}</td>)}
                                             {settings.recoveryItems.map(h => <td key={h} onClick={() => toggleSign(r.id, 'recovery', h)} className={`border border-slate-100 text-center cursor-pointer transition-colors ${r.recovery?.[h] ? 'bg-emerald-50 text-emerald-600 font-bold' : ''}`}>{r.recovery?.[h] ? '○' : ''}</td>)}
-                                            <td className="p-1 border border-slate-100">
+                                            <td className="p-1 border border-slate-100 bg-white">
                                                 <input type="text" value={r.note || ''} onChange={e => updateRecord(r.id, 'note', e.target.value)} className="w-full outline-none bg-transparent" placeholder="..." />
                                             </td>
-                                            <td className="p-1 border border-slate-100 text-center">
-                                                <button onClick={() => deleteRecord(r.id)} className="text-slate-200 hover:text-red-400 transition-colors">✕</button>
+                                            <td className="p-1 border border-slate-100 text-center bg-white">
+                                                <button onClick={() => deleteRecord(r.id)} className="text-slate-300 hover:text-red-500 transition-colors">✕</button>
                                             </td>
                                         </tr>
                                     ))}
@@ -419,6 +289,7 @@ tr:hover td {
                         </div>
                     </div>
 
+                    {/* 設定モーダル */}
                     {isConfigOpen && (
                         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
                             <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl border border-slate-200">
@@ -454,9 +325,9 @@ tr:hover td {
                 </div>
             );
         }
+
+        // --- 4. 画面描画 ---
         ReactDOM.createRoot(document.getElementById('root')).render(<App />);
     </script>
-</body>
-</html>
 </body>
 </html>
