@@ -13,72 +13,117 @@
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 
     <style>
-        /* --- 画面全体のレイアウト --- */
-        html, body {
-            height: 100%;
-            margin: 0;
-            overflow: hidden; /* 画面全体のスクロールを禁止 */
-        }
+     /* --- 1. ベースレイアウト（画面全体のスクロール禁止） --- */
+html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #f8fafc;
+}
 
-        #root {
-            height: 100%;
-        }
+/* --- 2. ページ上部ヘッダー --- */
+header {
+    position: relative;
+    z-index: 150; /* テーブル要素より必ず上にくるように設定 */
+    background: white;
+    flex-shrink: 0;
+}
 
-        /* 1. 最上部のヘッダー（K-STEPロゴ・追加ボタン等） */
-        header {
-            position: relative;
-            z-index: 110;
-            background: white;
-            flex-shrink: 0;
-        }
+/* --- 3. テーブルエリア（スクロール領域） --- */
+.table-container {
+    flex-grow: 1;
+    height: calc(100vh - 70px); /* ヘッダーの実際の高さに合わせて調整してください */
+    overflow: auto;
+    position: relative;
+    padding: 0 1rem 1rem 1rem;
+}
 
-        /* 2. テーブルを表示するスクロールエリア */
-        .table-container {
-            flex-grow: 1;
-            height: calc(100vh - 73px); /* ヘッダーの高さを引いた残りすべて */
-            overflow: auto; /* ここでテーブルのスクロールを有効にする */
-            position: relative;
-            padding: 0 1rem 1rem 1rem;
-        }
+/* stickyを正常に機能させるための必須設定 */
+table {
+    border-collapse: separate; 
+    border-spacing: 0; /* ※修正: border-separateというプロパティはないためこちらを使用 */
+}
 
-        /* --- テーブルヘッダーの固定設定 --- */
-        
-        /* 日付・時間の列全体 */
-        .sticky-col-1 { 
-            position: sticky; 
-            left: 0; 
-            z-index: 60; 
-            background: white; 
-            min-width: 90px;
-        }
-        .sticky-col-2 { 
-            position: sticky; 
-            left: 90px; 
-            z-index: 60; 
-            background: white; 
-            min-width: 40px;
-        }
+/* --- 4. 行の固定 (上部のヘッダー) --- */
+.header-row-1 th {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: #1e293b;
+    color: white;
+    border: 1px solid #334155;
+}
 
-        /* 黒い大項目ヘッダー（状態、良好、注意など） */
-        .header-row-1 th {
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            background: #1e293b; /* slate-800 */
-        }
+.header-row-2 th {
+    position: sticky;
+    top: 35px; /* header-row-1の高さに合わせて調整してください */
+    z-index: 90; /* 1段目より少し下げる */
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+}
 
-        /* 縦書きの小項目ヘッダー（気分、睡眠など） */
-        .header-row-2 th {
-            position: sticky;
-            top: 33px; /* 重なる場合はこの数値を調整(30px〜35px程度) */
-            z-index: 90;
-            background: #f1f5f9; /* slate-100 */
-        }
+/* --- 5. 列の固定 (左側の列) --- */
+.sticky-col-1 {
+    position: sticky;
+    left: 0;
+    z-index: 80; /* 行ヘッダー（100, 90）より低く設定し、縦スクロール時に裏へ潜らせる */
+    background: white;
+    min-width: 100px;
+    border-right: 1px solid #cbd5e1;
+}
 
-        /* 日付・時間列の見出し（左上隅で固定） */
-        thead .sticky-col-1, thead .sticky-col-2 {
-            z-index: 105;
-        }
+.sticky-col-2 {
+    position: sticky;
+    left: 100px; /* sticky-col-1のmin-widthと合わせる */
+    z-index: 80;
+    background: white;
+    min-width: 50px;
+    border-right: 2px solid #94a3b8;
+}
+
+/* --- 6. 左上コーナーの固定 (行と列の交差部分) --- */
+thead .sticky-col-1, 
+thead .sticky-col-2 {
+    z-index: 120; /* 縦横どちらにスクロールしても一番上にくるよう設定 */
+}
+
+/* --- 7. セル・テキストの装飾 --- */
+.vertical-text {
+    writing-mode: vertical-rl;
+    height: 140px;
+    font-weight: normal;
+    font-size: 11px;
+    padding: 10px 2px;
+    text-align: left;
+}
+
+.cell-check {
+    cursor: pointer;
+    text-align: center;
+    min-width: 38px;
+    border: 1px solid #e2e8f0;
+    font-size: 1.2rem;
+}
+
+.cell-check.active {
+    background-color: #fef08a;
+}
+
+tr:hover td {
+    background-color: #f1f5f9;
+}
+
+/* --- 8. モーダル --- */
+.modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 200; /* 画面内で最前面に表示 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
 
         /* --- その他装飾 --- */
         .vertical-text { writing-mode: vertical-rl; height: 140px; font-weight: normal; font-size: 10px; }
