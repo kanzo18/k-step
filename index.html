@@ -14,13 +14,8 @@
 
     <style>
      /* --- 1. ベースレイアウト（画面全体のスクロール禁止） --- */
-html, body, #root {
-    height: 100%;
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-    background: #f8fafc;
-}
+html, body, #root { height: 100%; margin: 0; padding: 0; overflow: hidden; background: #f8fafc; }
+        .table-container { height: calc(100vh - 70px); overflow: auto; position: relative; }
 
 /* --- 2. ページ上部ヘッダー --- */
 header {
