@@ -155,6 +155,85 @@ tr:hover td {
             badSigns: ['眠気を全く感じない', '物音に過敏', '家族を敵視', '散財・遠方へ行く', 'やることが多い', '脱着衣が激しい', '全能感'],
             recoveryItems: ['コーヒー', 'スキンケア', 'マインドフルネス']
         };
+        // --- ここから追加 ---
+        const App = () => {
+            return (
+                <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                    <header style={{ padding: '10px 20px', borderBottom: '1px solid #ccc' }}>
+                        <h1>K-STEP (ヘッダー)</h1>
+                    </header>
+
+                    {/* テーブルエリア */}
+                    <div className="table-container">
+                        <table>
+                            <thead>
+                                {/* 1段目：大項目 */}
+                                <tr className="header-row-1">
+                                    <th className="sticky-col-1">日付</th>
+                                    <th className="sticky-col-2">時間</th>
+                                    <th colSpan={defaultSettings.conditions.length}>状態(1-5)</th>
+                                    <th colSpan={defaultSettings.goodSigns.length}>良好</th>
+                                    <th colSpan={defaultSettings.warningSigns.length}>注意</th>
+                                    <th colSpan={defaultSettings.badSigns.length}>悪化</th>
+                                    <th colSpan={defaultSettings.recoveryItems.length}>リカバリ</th>
+                                    <th>備考</th>
+                                </tr>
+
+                                {/* 2段目：小項目（JavaScriptのmapを使って自動生成） */}
+                                <tr className="header-row-2">
+                                    <th className="sticky-col-1"></th>
+                                    <th className="sticky-col-2"></th>
+                                    
+                                    {defaultSettings.conditions.map(item => (
+                                        <th key={item}><div className="vertical-text">{item}</div></th>
+                                    ))}
+                                    {defaultSettings.goodSigns.map(item => (
+                                        <th key={item}><div className="vertical-text">{item}</div></th>
+                                    ))}
+                                    {defaultSettings.warningSigns.map(item => (
+                                        <th key={item}><div className="vertical-text">{item}</div></th>
+                                    ))}
+                                    {defaultSettings.badSigns.map(item => (
+                                        <th key={item}><div className="vertical-text">{item}</div></th>
+                                    ))}
+                                    {defaultSettings.recoveryItems.map(item => (
+                                        <th key={item}><div className="vertical-text">{item}</div></th>
+                                    ))}
+                                    
+                                    <th></th> {/* 備考用 */}
+                                </tr>
+                            </thead>
+                            
+                            <tbody>
+                                {/* テスト用のデータ行 */}
+                                <tr>
+                                    <td className="sticky-col-1">5/29</td>
+                                    <td className="sticky-col-2">13:00</td>
+                                    {/* 空のセルを大量に生成（見栄え確認用） */}
+                                    {Array.from({ length: 27 }).map((_, i) => (
+                                        <td key={i} className="cell-check"></td>
+                                    ))}
+                                    <td>テスト備考</td>
+                                </tr>
+                                {/* スクロールテスト用にもう何行か追加するとわかりやすいです */}
+                                <tr>
+                                    <td className="sticky-col-1">5/30</td>
+                                    <td className="sticky-col-2">09:00</td>
+                                    {Array.from({ length: 27 }).map((_, i) => (
+                                        <td key={i} className="cell-check"></td>
+                                    ))}
+                                    <td></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
+        // Reactコンポーネントを id="root" に描画する
+        ReactDOM.render(<App />, document.getElementById('root'));
+        // --- ここまで ---
 
         // --- 2. Webhook送信関数 ---
         const sendWebhook = async (user, item, category, date, time) => {
