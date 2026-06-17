@@ -7,15 +7,12 @@
     
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
     <script src="https://cdn.tailwindcss.com"></script>
     
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
-
 
     <style>
         /* --- 1. ベースレイアウト --- */
@@ -80,10 +77,11 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        // グローバルからの参照を安定させる
-        const { useState, useEffect, useMemo } = React;
+        // グローバル変数を参照
+        const { useState, useEffect, useMemo } = window.React;
+        const { createRoot } = window.ReactDOM;
 
-        // --- 1. Firebase初期設定 ---
+        // Firebase初期化
         const firebaseConfig = {
             apiKey: "AIzaSyAlHizRGdtO-DiqP72zfm8CfPN72lMF6uE",
             authDomain: "k-step-3918.firebaseapp.com",
